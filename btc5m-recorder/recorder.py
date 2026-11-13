@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""5 分钟预测记录器(BTC / ETH):只记录信号,不下单。
+"""5 分钟预测记录器(BTC / ETH / BNB):只记录信号,不下单。
 
 用法:  python3 recorder.py
 环境变量:
@@ -7,7 +7,7 @@
   HOST / PORT    监听地址和端口(默认 0.0.0.0 / 8787,无密码时强制 127.0.0.1)。
   BINANCE_BASE   行情接口地址(默认 https://data-api.binance.vision)。
   DB_PATH        BTC 的数据库文件(默认 data/recorder.db);其他币种存到同目录的 recorder_<币种>.db。
-  SYMBOLS        要记录的币种,逗号分隔(默认 BTCUSDT,ETHUSDT),必须在 rules.PROFILES 里有参数。
+  SYMBOLS        要记录的币种,逗号分隔(默认 BTCUSDT,ETHUSDT,BNBUSDT),必须在 rules.PROFILES 里有参数。
 """
 import base64
 import hmac
@@ -25,7 +25,7 @@ import rules
 
 HERE = Path(__file__).resolve().parent
 BASE = os.environ.get("BINANCE_BASE", "https://data-api.binance.vision").rstrip("/")
-SYMBOLS = [x.strip().upper() for x in os.environ.get("SYMBOLS", "BTCUSDT,ETHUSDT").split(",") if x.strip()]
+SYMBOLS = [x.strip().upper() for x in os.environ.get("SYMBOLS", "BTCUSDT,ETHUSDT,BNBUSDT").split(",") if x.strip()]
 DB_PATH = Path(os.environ.get("DB_PATH", HERE / "data" / "recorder.db"))
 PASSWORD = os.environ.get("DASH_PASSWORD", "")
 KEEP_SECONDS = 2400

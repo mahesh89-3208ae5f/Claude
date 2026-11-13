@@ -287,7 +287,7 @@ function drawChart() {
   let lo = Math.min(r.open - band * 2.5, ...pts.map(p => p[1])), hi = Math.max(r.open + band * 2.5, ...pts.map(p => p[1]));
   const pad = (hi - lo) * 0.08; lo -= pad; hi += pad;
   const x = t => m.l + t / 300 * (W - m.l - m.r), y = v => m.t + (hi - v) / (hi - lo) * (H - m.t - m.b);
-  const step = [0.5, 1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000].find(s => (hi - lo) / s <= 5) || 2000;
+  const step = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000].find(s => (hi - lo) / s <= 5) || 2000;
   let g = '';
   for (let v = Math.ceil(lo / step) * step; v <= hi; v += step)
     g += `<line x1="${m.l}" x2="${W - m.r}" y1="${y(v)}" y2="${y(v)}" stroke="var(--grid)"/><text x="${m.l - 8}" y="${y(v) + 4}" text-anchor="end">${v.toLocaleString('en-US', {minimumFractionDigits: step < 1 ? 1 : 0})}</text>`;

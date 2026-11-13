@@ -72,11 +72,56 @@ class EthProfileTest(unittest.TestCase):
         self.assertEqual(self.ev(210, 0.05, rng=0.45)["max_price"], 0.73)
 
     def test_every_profile_covers_both_checkpoints(self):
+        self.assertEqual(set(rules.PROFILES), {"BTCUSDT", "ETHUSDT", "BNBUSDT"})
         for prof in rules.PROFILES.values():
             self.assertEqual(set(prof["table"]), {cp["elapsed"] for cp in rules.CHECKPOINTS})
             for cells in prof["table"].values():
                 for p, q in cells.values():
                     self.assertLess(q, p)
+
+
+class BnbProfileTest(unittest.TestCase):
+    def ev(self, elapsed, dev, rng=0.2, ts=NOON, prev=None):
+        return rules.evaluate(elapsed, dev, rng, ts, prev, "BNBUSDT")
+
+    def test_table_at_first_checkpoint(self):
+        for dev, p, q in ((0.03, 0.784, 0.75), (-0.05, 0.892, 0.86), (0.08, 0.943, 0.91)):
+            r = self.ev(210, dev)
+            self.assertTrue(r["signal"])
+            self.assertEqual((r["table_p"], r["max_price"]), (p, q))
+        self.assertFalse(self.ev(210, 0.019)["signal"])
+        self.assertFalse(self.ev(210, 0.10)["signal"])
+
+    def test_table_at_second_checkpoint(self):
+        for dev, p, q in ((0.03, 0.825, 0.79), (-0.05, 0.919, 0.89)):
+            r = self.ev(240, dev)
+            self.assertEqual((r["table_p"], r["max_price"]), (p, q))
+        self.assertFalse(self.ev(240, 0.08)["signal"])
+
+    def test_high_vol_cutoff(self):
+        self.assertFalse(self.ev(210, 0.05, rng=0.33)["high_vol"])
+        r = self.ev(210, 0.05, rng=0.34)
+        self.assertTrue(r["high_vol"])
+        self.assertEqual(r["max_price"], 0.75)
+        self.assertFalse(self.ev(210, 0.03, rng=0.34)["signal"])
+        self.assertEqual(self.ev(240, 0.08, rng=0.34)["max_price"], 0.89)
+
+    def test_late_hour_discount(self):
+        self.assertAlmostEqual(self.ev(210, 0.05, ts=LATE)["max_price"], 0.81)
+        self.assertAlmostEqual(self.ev(240, 0.03, ts=LATE)["max_price"], 0.74)
+
+    def test_shared_rules_apply(self):
+        self.assertFalse(self.ev(210, 0.05, ts=DATA)["signal"])
+        self.assertFalse(self.ev(240, 0.05, prev={"dev_pct": 0.06, "signal": True})["signal"])
+        self.assertFalse(self.ev(240, -0.05, prev={"dev_pct": 0.05, "signal": True})["signal"])
+
+    def test_other_profiles_unchanged(self):
+        btc, eth = rules.PROFILES["BTCUSDT"], rules.PROFILES["ETHUSDT"]
+        self.assertEqual(btc["table"], {210: {0: (0.782, 0.75), 1: (0.892, 0.86), 2: (0.938, 0.91)},
+                                        240: {0: (0.832, 0.80), 1: (0.915, 0.89)}})
+        self.assertEqual(eth["table"], {210: {0: (0.766, 0.73), 1: (0.853, 0.82), 2: (0.916, 0.88)},
+                                        240: {0: (0.799, 0.76), 1: (0.891, 0.86)}})
+        self.assertEqual((btc["high_vol_range"], eth["high_vol_range"]), (0.30, 0.40))
 
 
 def sig(ts, side="up", result="up", max_price=0.8, app_price=None):

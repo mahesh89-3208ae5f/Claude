@@ -42,6 +42,16 @@ PROFILES = {
         "high_vol_range": 0.40,
         "late_hours": (22,),
     },
+    # BNB 现货表现接近 BTC,但成交更稀、平局更多
+    "BNBUSDT": {
+        "name": "BNB",
+        "table": {
+            210: {0: (0.784, 0.75), 1: (0.892, 0.86), 2: (0.943, 0.91)},
+            240: {0: (0.825, 0.79), 1: (0.919, 0.89)},
+        },
+        "high_vol_range": 0.33,
+        "late_hours": (22,),
+    },
 }
 DEFAULT_SYMBOL = "BTCUSDT"
 
