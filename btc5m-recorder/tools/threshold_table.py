@@ -1,9 +1,9 @@
-"""用逐秒数据重算门槛表。用法: python3 threshold_table.py [btc_1s.json]
+"""用逐秒数据重算门槛表。用法: python3 threshold_table.py [数据文件,默认 btcusdt_1s.json]
 输出每个(偏离分档, 剩余时间)格子的历史胜率 / 95% 置信下限 / 样本数,
 以及保本收益率和最低要求收益率(下限再减 2 个点)。rules.py 里的 TABLE 取自
 剩余 90 秒和 60 秒两列。还包含高/低波动分组、样本外检验和分时段统计。"""
 import json,math,os,sys
-f=sys.argv[1] if len(sys.argv)>1 else os.path.join(os.path.dirname(os.path.abspath(__file__)),"btc_1s.json")
+f=sys.argv[1] if len(sys.argv)>1 else os.path.join(os.path.dirname(os.path.abspath(__file__)),"btcusdt_1s.json")
 D=json.load(open(f))
 if "rows" in D: op=[x[1] for x in D["rows"]]; cl=[x[2] for x in D["rows"]]
 else: op=D["op"]; cl=D["cl"]

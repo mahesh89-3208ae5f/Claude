@@ -54,6 +54,31 @@ class EvaluateTest(unittest.TestCase):
         self.assertTrue(ev(240, -0.05, prev={"dev_pct": 0.01, "signal": False})["signal"])
 
 
+class EthProfileTest(unittest.TestCase):
+    def ev(self, elapsed, dev, rng=0.2, ts=NOON, prev=None):
+        return rules.evaluate(elapsed, dev, rng, ts, prev, "ETHUSDT")
+
+    def test_thresholds_lower_than_btc(self):
+        self.assertEqual(self.ev(210, 0.03)["max_price"], 0.73)
+        self.assertEqual(self.ev(210, 0.05)["max_price"], 0.82)
+        self.assertEqual(self.ev(210, 0.08)["max_price"], 0.88)
+        self.assertEqual(self.ev(240, 0.03)["max_price"], 0.76)
+        self.assertEqual(self.ev(240, 0.05)["max_price"], 0.86)
+        self.assertFalse(self.ev(240, 0.08)["signal"])
+
+    def test_high_vol_cutoff_is_higher(self):
+        self.assertFalse(self.ev(210, 0.05, rng=0.35)["high_vol"])
+        self.assertTrue(ev(210, 0.05, rng=0.35)["high_vol"])
+        self.assertEqual(self.ev(210, 0.05, rng=0.45)["max_price"], 0.73)
+
+    def test_every_profile_covers_both_checkpoints(self):
+        for prof in rules.PROFILES.values():
+            self.assertEqual(set(prof["table"]), {cp["elapsed"] for cp in rules.CHECKPOINTS})
+            for cells in prof["table"].values():
+                for p, q in cells.values():
+                    self.assertLess(q, p)
+
+
 def sig(ts, side="up", result="up", max_price=0.8, app_price=None):
     return {"round_ts": ts, "side": side, "result": result,
             "max_price": max_price, "app_price": app_price}

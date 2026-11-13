@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>BTC 5 分钟预测记录器</title>
+<title>5 分钟预测记录器</title>
 <style>
 :root {
   color-scheme: light;
@@ -30,6 +30,9 @@ header { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; ma
 h1 { font-size: 20px; font-weight: 650; margin: 0; }
 h2 { font-size: 15px; font-weight: 650; margin: 28px 0 10px; }
 .spacer { flex: 1; }
+.tabs { display: inline-flex; padding: 3px; gap: 2px; border-radius: 9px; background: var(--wash); border: 1px solid var(--border); }
+.tabs button { border: 0; background: transparent; padding: 3px 16px; border-radius: 6px; font-size: 14px; font-weight: 600; color: var(--ink-2); }
+.tabs button[aria-pressed=true] { background: var(--surface); color: var(--ink); box-shadow: 0 0 0 1px var(--border), 0 1px 2px rgba(0,0,0,0.08); }
 .badge { font-size: 12.5px; color: var(--ink-2); border: 1px solid var(--border); border-radius: 999px; padding: 2px 10px; background: var(--surface); }
 .status { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-2); }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
@@ -98,7 +101,8 @@ footer { margin-top: 22px; font-size: 12.5px; color: var(--muted); }
 <body>
 <main>
   <header>
-    <h1>BTC 5 分钟预测记录器</h1>
+    <h1>5 分钟预测记录器</h1>
+    <nav class="tabs" id="tabs" aria-label="币种"></nav>
     <span class="badge">只记录 · 不下单</span>
     <span class="spacer"></span>
     <span class="status"><span class="dot" id="dot"></span><span id="health">连接中…</span></span>
@@ -107,7 +111,7 @@ footer { margin-top: 22px; font-size: 12.5px; color: var(--muted); }
   <div class="banner" id="banner"></div>
 
   <section class="tiles">
-    <div class="card tile"><div class="label">现货价</div><div class="value" id="price">—</div><div class="sub">BTC/USDT</div></div>
+    <div class="card tile"><div class="label">现货价</div><div class="value" id="price">—</div><div class="sub" id="pair"></div></div>
     <div class="card tile"><div class="label">目标价(本轮开盘)</div><div class="value" id="open">—</div><div class="sub" id="roundTime"></div></div>
     <div class="card tile"><div class="label">偏离目标价</div><div class="value" id="dev">—</div><div class="sub" id="devSub"></div></div>
     <div class="card tile"><div class="label">本轮剩余</div><div class="value" id="left">—</div>
@@ -116,7 +120,7 @@ footer { margin-top: 22px; font-size: 12.5px; color: var(--muted); }
 
   <section class="card chart-card">
     <div class="chart-head"><strong>本轮现货价与目标价</strong><span id="volNote"></span></div>
-    <div id="chart"><svg id="svg" role="img" aria-label="本轮 BTC 现货价走势"></svg><div id="tip"></div></div>
+    <div id="chart"><svg id="svg" role="img" aria-label="本轮现货价走势"></svg><div id="tip"></div></div>
     <div class="legend">
       <span><i class="key-line"></i>现货价</span>
       <span><i class="key-target"></i>目标价</span>
@@ -151,6 +155,23 @@ const sideChip = side => side === 'up' ? '<span class="chip up"><i>▲</i>涨</s
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
 
 let state = null, hoverX = null, lastRound = null;
+let symbol = localStorage.getItem('symbol') || '';
+const qs = extra => '?' + new URLSearchParams({...(symbol ? {symbol} : {}), ...extra});
+
+function renderTabs(s) {
+  const tabs = $('tabs');
+  if (tabs.dataset.key === s.symbol + s.symbols.length) return;
+  tabs.dataset.key = s.symbol + s.symbols.length;
+  tabs.hidden = s.symbols.length < 2;
+  tabs.innerHTML = s.symbols.map(x => `<button type="button" data-symbol="${x.symbol}" aria-pressed="${x.symbol === s.symbol}">${esc(x.name)}</button>`).join('');
+}
+$('tabs').addEventListener('click', ev => {
+  const b = ev.target.closest('button[data-symbol]');
+  if (!b || b.dataset.symbol === symbol) return;
+  symbol = b.dataset.symbol; localStorage.setItem('symbol', symbol);
+  lastRound = null; hoverX = null; $('cps').innerHTML = ''; $('history').innerHTML = ''; $('tabs').dataset.key = '';
+  loadState(); loadSummary();
+});
 
 async function api(path, opts) {
   const r = await fetch(path, opts);
@@ -161,7 +182,11 @@ async function api(path, opts) {
 
 /* ---------- 实时状态 ---------- */
 function renderState(s) {
-  state = s;
+  if (symbol && s.symbol !== symbol) return;          // 切换币种后丢弃旧请求的结果
+  state = s; symbol = s.symbol;
+  renderTabs(s);
+  $('pair').textContent = s.symbol.replace('USDT', '/USDT');
+  document.title = `${s.name} 5 分钟预测记录器`;
   $('dot').className = 'dot ' + (s.healthy ? 'ok' : 'bad');
   $('health').textContent = s.healthy ? '行情正常' :
     (s.stale_s == null ? '尚未取得行情' : `行情延迟 ${Math.round(s.stale_s)} 秒`) + (s.error ? ' · ' + s.error : '');
@@ -246,7 +271,7 @@ document.addEventListener('submit', async ev => {
   const v = form.querySelector('input').value.trim();
   try {
     await api('/api/app_price', {method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({id: +form.dataset.id, price: v === '' ? null : +v})});
+      body: JSON.stringify({symbol, id: +form.dataset.id, price: v === '' ? null : +v})});
     form.querySelector('input').blur();
     await Promise.all([loadState(), loadSummary()]);
   } catch (err) { alert(err.message); }
@@ -262,10 +287,10 @@ function drawChart() {
   let lo = Math.min(r.open - band * 2.5, ...pts.map(p => p[1])), hi = Math.max(r.open + band * 2.5, ...pts.map(p => p[1]));
   const pad = (hi - lo) * 0.08; lo -= pad; hi += pad;
   const x = t => m.l + t / 300 * (W - m.l - m.r), y = v => m.t + (hi - v) / (hi - lo) * (H - m.t - m.b);
-  const step = [5, 10, 20, 25, 50, 100, 200, 250, 500, 1000].find(s => (hi - lo) / s <= 5) || 2000;
+  const step = [0.5, 1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000].find(s => (hi - lo) / s <= 5) || 2000;
   let g = '';
   for (let v = Math.ceil(lo / step) * step; v <= hi; v += step)
-    g += `<line x1="${m.l}" x2="${W - m.r}" y1="${y(v)}" y2="${y(v)}" stroke="var(--grid)"/><text x="${m.l - 8}" y="${y(v) + 4}" text-anchor="end">${v.toLocaleString('en-US')}</text>`;
+    g += `<line x1="${m.l}" x2="${W - m.r}" y1="${y(v)}" y2="${y(v)}" stroke="var(--grid)"/><text x="${m.l - 8}" y="${y(v) + 4}" text-anchor="end">${v.toLocaleString('en-US', {minimumFractionDigits: step < 1 ? 1 : 0})}</text>`;
   for (let t = 0; t <= 300; t += 60)
     g += `<text x="${x(t)}" y="${H - 6}" text-anchor="${t === 0 ? 'start' : t === 300 ? 'end' : 'middle'}">${mmss(t)}</text>`;
   g += `<rect x="${m.l}" width="${W - m.l - m.r}" y="${y(r.open + band)}" height="${y(r.open - band) - y(r.open + band)}" fill="var(--wash)"/>`;
@@ -343,11 +368,12 @@ function renderSummary(d) {
 }
 
 async function loadState() {
-  try { renderState(await api('/api/state')); }
+  try { renderState(await api('/api/state' + qs({}))); }
   catch (e) { $('dot').className = 'dot bad'; $('health').textContent = '连不上记录器'; }
 }
 async function loadSummary() {
-  try { renderSummary(await api('/api/summary' + ($('showAll').checked ? '?all=1' : ''))); } catch (e) {}
+  const asked = symbol;
+  try { const d = await api('/api/summary' + qs($('showAll').checked ? {all: 1} : {})); if (asked === symbol) renderSummary(d); } catch (e) {}
 }
 $('showAll').addEventListener('change', loadSummary);
 loadState(); loadSummary();

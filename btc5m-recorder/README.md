@@ -1,6 +1,6 @@
-# BTC 5 分钟预测记录器
+# 5 分钟预测记录器(BTC / ETH)
 
-只记录信号,不下单。程序每秒读取 BTC/USDT 现货价,在每轮开盘后 3:30 和 4:00 各检查一次,
+只记录信号,不下单。程序每秒读取 BTC/USDT 和 ETH/USDT 现货价,在每轮开盘后 3:30 和 4:00 各检查一次,
 按门槛表判断是否出信号,并在下一轮开始时记下结果。它只用公开行情,不需要任何账号或密钥。
 
 ## 运行
@@ -19,7 +19,8 @@ DASH_PASSWORD=换成你的密码 python3 recorder.py
 | `DASH_PASSWORD` | 无 | 看板密码 |
 | `HOST` / `PORT` | `0.0.0.0` / `8787` | 监听地址和端口 |
 | `BINANCE_BASE` | `https://data-api.binance.vision` | 行情接口,连不上时可换成 `https://api.binance.com` |
-| `DB_PATH` | `data/recorder.db` | 记录保存位置(SQLite) |
+| `DB_PATH` | `data/recorder.db` | BTC 的记录(SQLite);ETH 存在同目录的 `recorder_ethusdt.db` |
+| `SYMBOLS` | `BTCUSDT,ETHUSDT` | 要记录的币种;只想记录 BTC 就设成 `BTCUSDT` |
 
 密码通过 HTTP 基本认证传输。直接用 IP 访问时密码是明文传输的,
 建议用 SSH 隧道(`ssh -L 8787:127.0.0.1:8787 服务器`)或在前面加一层 HTTPS 反向代理。
@@ -59,19 +60,24 @@ sudo systemctl enable --now btc5m-recorder
 
 规则都在 `rules.py`,改动后运行 `python3 -m unittest` 验证。
 
-| 偏离目标价 | 第 3:30 最高买入价 | 第 4:00 最高买入价 |
+最高买入价(第 3:30 / 第 4:00):
+
+| 偏离目标价 | BTC | ETH |
 |---|---|---|
 | 不足 0.02% | 不下 | 不下 |
-| 0.02–0.04% | 75% | 80% |
-| 0.04–0.07% | 86% | 89% |
-| 0.07–0.10% | 91% | 不下 |
+| 0.02–0.04% | 75% / 80% | 73% / 76% |
+| 0.04–0.07% | 86% / 89% | 82% / 86% |
+| 0.07–0.10% | 91% / 不下 | 88% / 不下 |
 | 0.10% 以上 | 不下 | 不下 |
 
-- 过去 30 分钟高低价差超过 0.3% 时,按偏离小一档的那一行查表。
+ETH 波动约为 BTC 的 1.4 倍,同样的偏离更容易被反转,所以门槛更低。两个币的结果有 83% 的轮次相同,
+同时做并不能分散风险。
+
+- 过去 30 分钟高低价差超过 0.3%(ETH 是 0.4%)时,按偏离小一档的那一行查表。
 - 北京时间 22:00–23:00,最高买入价再减 5 个点。
 - 第 4:00 的偏离比第 3:30 缩小时不出信号;第 3:30 已出信号而方向反转时也不出。
 - 北京时间 20:25–20:35、21:25–21:35 不出信号(美国数据常见公布时间)。
-- 风控:当日估算亏损达 $10 停到第二天;连输 3 笔暂停 1 小时。暂停期间的信号照常记录,但不计入统计。
+- 风控:当日估算亏损达 $10 停到第二天;连输 3 笔暂停 1 小时。BTC 和 ETH 各算各的。暂停期间的信号照常记录,但不计入统计。
 
 ## 已知限制
 
@@ -86,9 +92,13 @@ sudo systemctl enable --now btc5m-recorder
 `tools/` 里是得出门槛表的回测脚本,建议每月重算一次:
 
 ```bash
-python3 tools/fetch_1s.py 60        # 下载最近 60 天的逐秒价格(需要 curl,可断点续传)
-python3 tools/threshold_table.py    # 输出各格子的历史胜率、置信下限和最低要求收益率
+python3 tools/fetch_1s.py 60 BTCUSDT                       # 下载最近 60 天的逐秒价格(需要 curl,可断点续传)
+python3 tools/threshold_table.py tools/btcusdt_1s.json     # 各格子的历史胜率、置信下限和最低要求收益率
+python3 tools/simulate_rules.py tools/btcusdt_1s.json BTCUSDT   # 把现有规则在历史上重放,看信号胜率
 ```
 
-`rules.py` 的 `TABLE` 取自输出中"剩余 90 秒"和"剩余 60 秒"两列:
+ETH 把币种换成 `ETHUSDT`、文件换成 `ethusdt_1s.json`。
+
+`rules.py` 里 `PROFILES` 的 `table` 取自 `threshold_table.py` 输出中"剩余 90 秒"和"剩余 60 秒"两列:
 历史胜率是第一个数,最高买入价是第二个数(95% 置信下限)减 2 个百分点。
+`simulate_rules.py` 只能检验信号胜率是否高于最高买入价,不能说明实际能否按该价格成交。

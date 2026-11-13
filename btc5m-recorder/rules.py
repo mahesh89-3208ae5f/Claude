@@ -18,16 +18,35 @@ CHECKPOINTS = (
 # 偏离分档(占目标价的百分比)
 BIN_EDGES = (0.02, 0.04, 0.07, 0.10)
 
-# 检查点 -> 分档序号 -> (历史胜率, 最高买入价)
-TABLE = {
-    210: {0: (0.782, 0.75), 1: (0.892, 0.86), 2: (0.938, 0.91)},
-    240: {0: (0.832, 0.80), 1: (0.915, 0.89)},
+# 每个币种一套参数:
+#   table:          检查点 -> 分档序号 -> (历史胜率, 最高买入价)
+#   high_vol_range: 过去 30 分钟高低价差(%)超过它,按小一档查表
+#   late_hours:     这些小时(北京时间)最高买入价再下调 LATE_HOUR_DISCOUNT
+PROFILES = {
+    "BTCUSDT": {
+        "name": "BTC",
+        "table": {
+            210: {0: (0.782, 0.75), 1: (0.892, 0.86), 2: (0.938, 0.91)},
+            240: {0: (0.832, 0.80), 1: (0.915, 0.89)},
+        },
+        "high_vol_range": 0.30,
+        "late_hours": (22,),
+    },
+    # ETH 波动约为 BTC 的 1.4 倍,同样的偏离更容易反转,门槛更低
+    "ETHUSDT": {
+        "name": "ETH",
+        "table": {
+            210: {0: (0.766, 0.73), 1: (0.853, 0.82), 2: (0.916, 0.88)},
+            240: {0: (0.799, 0.76), 1: (0.891, 0.86)},
+        },
+        "high_vol_range": 0.40,
+        "late_hours": (22,),
+    },
 }
+DEFAULT_SYMBOL = "BTCUSDT"
 
-HIGH_VOL_RANGE_PCT = 0.30   # 过去 30 分钟高低价差超过它,按小一档查表
 MIN_RANGE_SAMPLES = 1500    # 计算 30 分钟价差至少需要的秒数
-LATE_HOUR_DISCOUNT = 0.05   # 北京时间 22:00-23:00 门槛下调
-LATE_HOURS = (22,)
+LATE_HOUR_DISCOUNT = 0.05
 # 美国重要数据常见公布时间前后 5 分钟(北京时间,分钟数)
 BLACKOUT_MINUTES = ((20 * 60 + 25, 20 * 60 + 35), (21 * 60 + 25, 21 * 60 + 35))
 
@@ -61,12 +80,13 @@ def beijing_day(ts):
     return (ts + 8 * 3600) // 86400
 
 
-def evaluate(elapsed, dev_pct, range30_pct, ts, prev=None):
+def evaluate(elapsed, dev_pct, range30_pct, ts, prev=None, symbol=DEFAULT_SYMBOL):
     """在一个检查点判断是否出信号。
 
     prev: 本轮上一个检查点的结果 {"dev_pct": float, "signal": bool},没有则为 None。
     返回 dict:signal / side / reason / table_p / max_price / row / high_vol。
     """
+    prof = PROFILES[symbol]
     out = {"signal": False, "side": None, "reason": None, "table_p": None,
            "max_price": None, "row": None, "high_vol": False}
     if dev_pct == 0:
@@ -79,7 +99,7 @@ def evaluate(elapsed, dev_pct, range30_pct, ts, prev=None):
     if range30_pct is None:
         out["reason"] = "行情数据不足 30 分钟"
         return out
-    high_vol = range30_pct > HIGH_VOL_RANGE_PCT
+    high_vol = range30_pct > prof["high_vol_range"]
     out["high_vol"] = high_vol
 
     idx = bin_index(a)
@@ -105,13 +125,13 @@ def evaluate(elapsed, dev_pct, range30_pct, ts, prev=None):
     if row < 0:
         out["reason"] = "高波动降档后偏离不足"
         return out
-    cell = TABLE[elapsed].get(row)
+    cell = prof["table"][elapsed].get(row)
     if cell is None:
         out["reason"] = "偏离过大,收益率低于 10%"
         return out
 
     table_p, max_price = cell
-    if minute // 60 in LATE_HOURS:
+    if minute // 60 in prof["late_hours"]:
         max_price = round(max_price - LATE_HOUR_DISCOUNT, 4)
     out.update(signal=True, table_p=table_p, max_price=max_price, row=bin_label(row))
     return out

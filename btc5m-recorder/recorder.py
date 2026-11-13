@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""BTC 5 分钟预测记录器:只记录信号,不下单。
+"""5 分钟预测记录器(BTC / ETH):只记录信号,不下单。
 
 用法:  python3 recorder.py
 环境变量:
   DASH_PASSWORD  看板密码。不设置时只监听 127.0.0.1。
   HOST / PORT    监听地址和端口(默认 0.0.0.0 / 8787,无密码时强制 127.0.0.1)。
   BINANCE_BASE   行情接口地址(默认 https://data-api.binance.vision)。
-  DB_PATH        数据库文件(默认 data/recorder.db)。
+  DB_PATH        BTC 的数据库文件(默认 data/recorder.db);其他币种存到同目录的 recorder_<币种>.db。
+  SYMBOLS        要记录的币种,逗号分隔(默认 BTCUSDT,ETHUSDT),必须在 rules.PROFILES 里有参数。
 """
 import base64
 import hmac
@@ -15,6 +16,7 @@ import os
 import sqlite3
 import threading
 import time
+import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -23,7 +25,7 @@ import rules
 
 HERE = Path(__file__).resolve().parent
 BASE = os.environ.get("BINANCE_BASE", "https://data-api.binance.vision").rstrip("/")
-SYMBOL = os.environ.get("SYMBOL", "BTCUSDT")
+SYMBOLS = [x.strip().upper() for x in os.environ.get("SYMBOLS", "BTCUSDT,ETHUSDT").split(",") if x.strip()]
 DB_PATH = Path(os.environ.get("DB_PATH", HERE / "data" / "recorder.db"))
 PASSWORD = os.environ.get("DASH_PASSWORD", "")
 KEEP_SECONDS = 2400
@@ -33,7 +35,8 @@ STALE_AFTER = 3.0
 class Market:
     """逐秒行情缓存。秒级 K 线的开盘价和收盘价与回测口径一致。"""
 
-    def __init__(self):
+    def __init__(self, symbol):
+        self.symbol = symbol
         self.op, self.cl = {}, {}
         self.latest = None
         self.last_ok = 0.0
@@ -41,7 +44,7 @@ class Market:
 
     def _get(self, **params):
         q = "&".join(f"{k}={v}" for k, v in params.items())
-        url = f"{BASE}/api/v3/klines?symbol={SYMBOL}&interval=1s&{q}"
+        url = f"{BASE}/api/v3/klines?symbol={self.symbol}&interval=1s&{q}"
         with urllib.request.urlopen(url, timeout=5) as r:
             return json.loads(r.read())
 
@@ -115,6 +118,8 @@ class Store:
 class Engine:
     def __init__(self, market, store):
         self.m, self.s = market, store
+        self.symbol = market.symbol
+        self.profile = rules.PROFILES[market.symbol]
         self.lock = threading.Lock()
         self.done = set((r["round_ts"], r["cp"]) for r in store.q("SELECT round_ts, cp FROM evals"))
         self.settled = set(r["start_ts"] for r in store.q("SELECT start_ts FROM rounds"))
@@ -156,7 +161,7 @@ class Engine:
             if rows:
                 prev = {"dev_pct": rows[0]["dev_pct"],
                         "signal": bool(rows[0]["signal"]) and rows[0]["blocked"] is None}
-        e = rules.evaluate(cp["elapsed"], dev_pct, rng, t + 1, prev)
+        e = rules.evaluate(cp["elapsed"], dev_pct, rng, t + 1, prev, self.symbol)
         blocked = rules.risk_block(self.s.settled_signals(), t + 1) if e["signal"] else None
         self.s.x("""INSERT OR IGNORE INTO evals(round_ts, cp, ts, open, price, dev_pct, dev_usd,
                     side, signal, reason, row, table_p, max_price, range30, high_vol, blocked)
@@ -172,7 +177,10 @@ class Engine:
         stale = time.time() - m.last_ok
         out = {"healthy": m.latest is not None and stale < STALE_AFTER,
                "stale_s": round(stale, 1) if m.last_ok else None, "error": m.error,
-               "round": None, "checkpoints": [], "stake": rules.STAKE_USD}
+               "round": None, "checkpoints": [], "stake": rules.STAKE_USD,
+               "symbol": self.symbol, "name": self.profile["name"],
+               "high_vol_range": self.profile["high_vol_range"],
+               "symbols": [{"symbol": x, "name": rules.PROFILES[x]["name"]} for x in SYMBOLS]}
         if m.latest is None:
             return out
         latest = m.latest
@@ -186,7 +194,7 @@ class Engine:
             "dev_pct": None if o is None else (price / o - 1) * 100,
             "series": [m.cl.get(s) for s in range(start, latest + 1)],
             "range30": rng,
-            "high_vol": rng is not None and rng > rules.HIGH_VOL_RANGE_PCT,
+            "high_vol": rng is not None and rng > self.profile["high_vol_range"],
         }
         evals = {e["cp"]: e for e in self.s.q("SELECT * FROM evals WHERE round_ts=?", (start,))}
         for cp in rules.CHECKPOINTS:
@@ -259,7 +267,7 @@ def poll_loop(market, engine):
         time.sleep(max(0.2, 1.0 - (time.time() - t0)))
 
 
-def make_handler(engine):
+def make_handler(engines):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *a):
             pass
@@ -294,6 +302,10 @@ def make_handler(engine):
             if not self._authed():
                 return
             path, _, query = self.path.partition("?")
+            params = urllib.parse.parse_qs(query)
+            engine = engines.get(params.get("symbol", [SYMBOLS[0]])[0].upper())
+            if engine is None:
+                return self._send(400, {"error": "未知币种"})
             if path == "/":
                 self._send(200, (HERE / "static" / "index.html").read_bytes(), "text/html; charset=utf-8")
             elif path == "/api/state":
@@ -302,7 +314,7 @@ def make_handler(engine):
                 self._send(200, data)
             elif path == "/api/summary":
                 with engine.lock:
-                    data = engine.summary(include_all="all=1" in query)
+                    data = engine.summary(include_all=params.get("all") == ["1"])
                 self._send(200, data)
             else:
                 self._send(404, {"error": "not found"})
@@ -314,6 +326,7 @@ def make_handler(engine):
                 return self._send(404, {"error": "not found"})
             try:
                 body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0)) or 0))
+                engine = engines[str(body.get("symbol", SYMBOLS[0])).upper()]
                 with engine.lock:
                     engine.set_app_price(body["id"], body.get("price"))
                 self._send(200, {"ok": True})
@@ -324,15 +337,21 @@ def make_handler(engine):
 
 
 def main():
-    market, store = Market(), Store(DB_PATH)
-    engine = Engine(market, store)
-    threading.Thread(target=poll_loop, args=(market, engine), daemon=True).start()
+    engines = {}
+    for sym in SYMBOLS:
+        if sym not in rules.PROFILES:
+            raise SystemExit(f"rules.PROFILES 里没有 {sym} 的参数")
+        # BTC 沿用原来的文件名,旧记录不受影响
+        path = DB_PATH if sym == rules.DEFAULT_SYMBOL else DB_PATH.with_name(f"{DB_PATH.stem}_{sym.lower()}{DB_PATH.suffix}")
+        market = Market(sym)
+        engines[sym] = Engine(market, Store(path))
+        threading.Thread(target=poll_loop, args=(market, engines[sym]), daemon=True).start()
     host = os.environ.get("HOST", "0.0.0.0") if PASSWORD else "127.0.0.1"
     port = int(os.environ.get("PORT", "8787"))
-    print(f"记录器已启动: http://{host}:{port}  (只记录,不下单)", flush=True)
+    print(f"记录器已启动: http://{host}:{port}  币种: {', '.join(SYMBOLS)}  (只记录,不下单)", flush=True)
     if not PASSWORD:
         print("未设置 DASH_PASSWORD,只允许本机访问。", flush=True)
-    ThreadingHTTPServer((host, port), make_handler(engine)).serve_forever()
+    ThreadingHTTPServer((host, port), make_handler(engines)).serve_forever()
 
 
 if __name__ == "__main__":
