@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BTC 5 分钟预测记录器</title>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,0.10);
+  --series: #2a78d6; --series-track: #cde2fb;
+  --good: #0ca30c; --critical: #d03b3b; --warning: #fab219;
+  --wash: rgba(11,11,11,0.04);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
+    --series: #3987e5; --series-track: #104281;
+    --wash: rgba(255,255,255,0.05);
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; }
+main { max-width: 1080px; margin: 0 auto; padding: 20px 16px 48px; }
+header { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-bottom: 18px; }
+h1 { font-size: 20px; font-weight: 650; margin: 0; }
+h2 { font-size: 15px; font-weight: 650; margin: 28px 0 10px; }
+.spacer { flex: 1; }
+.badge { font-size: 12.5px; color: var(--ink-2); border: 1px solid var(--border); border-radius: 999px; padding: 2px 10px; background: var(--surface); }
+.status { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-2); }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.dot.ok { background: var(--good); } .dot.bad { background: var(--critical); }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+.tile .label { font-size: 13px; color: var(--ink-2); }
+.tile .value { font-size: 26px; font-weight: 600; line-height: 1.25; margin-top: 2px; white-space: nowrap; }
+.tile .sub { font-size: 12.5px; color: var(--muted); margin-top: 2px; min-height: 19px; }
+.chip { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; font-weight: 600; color: var(--ink);
+  border: 1px solid var(--border); border-radius: 6px; padding: 0 7px; vertical-align: middle; background: var(--surface); }
+.chip i { font-style: normal; font-size: 10px; }
+.chip.up i, .win i { color: var(--good); } .chip.down i, .lose i { color: var(--critical); }
+.meter { position: relative; height: 8px; border-radius: 999px; background: var(--series-track); margin-top: 9px; }
+.meter > b { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 999px; background: var(--series); }
+.meter > s { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--ink-2); border-radius: 1px; }
+.chart-card { margin-top: 12px; padding-bottom: 10px; }
+.chart-head { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: baseline; margin-bottom: 4px; }
+.chart-head strong { font-size: 14px; font-weight: 600; }
+.chart-head span { font-size: 12.5px; color: var(--muted); }
+#chart { position: relative; height: 250px; touch-action: pan-y; }
+#chart svg { display: block; width: 100%; height: 100%; }
+#chart text { font-size: 11.5px; fill: var(--muted); font-variant-numeric: tabular-nums; }
+#tip { position: absolute; pointer-events: none; display: none; background: var(--surface); color: var(--ink);
+  border: 1px solid var(--border); border-radius: 8px; padding: 6px 9px; font-size: 12.5px; white-space: nowrap;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.12); font-variant-numeric: tabular-nums; }
+#tip small { display: block; color: var(--ink-2); font-size: 12px; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12.5px; color: var(--ink-2); margin-top: 4px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.key-line { width: 16px; height: 2px; background: var(--series); border-radius: 1px; }
+.key-band { width: 14px; height: 10px; background: var(--wash); border: 1px solid var(--border); border-radius: 2px; }
+.key-target { width: 16px; height: 1px; background: var(--ink-2); }
+.cps { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 12px; margin-top: 12px; }
+.cp .top { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2); }
+.cp .top .spacer { flex: 1; }
+.cp .main { font-size: 22px; font-weight: 600; margin: 6px 0 2px; }
+.cp .detail { font-size: 12.5px; color: var(--muted); }
+.cp .note { font-size: 12.5px; color: var(--ink-2); margin-top: 8px; }
+.cp.signal { border-color: var(--series); box-shadow: 0 0 0 1px var(--series) inset; }
+.pricebox { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; font-size: 13px; color: var(--ink-2); }
+input[type=number] { width: 76px; font: inherit; font-size: 14px; padding: 5px 8px; color: var(--ink); background: var(--page);
+  border: 1px solid var(--axis); border-radius: 7px; font-variant-numeric: tabular-nums; }
+input[type=number]:focus { outline: 2px solid var(--series); outline-offset: 0; border-color: transparent; }
+button { font: inherit; font-size: 13px; padding: 5px 12px; border-radius: 7px; border: 1px solid var(--axis);
+  background: var(--surface); color: var(--ink); cursor: pointer; }
+button:hover { background: var(--wash); }
+.verdict { font-weight: 600; color: var(--ink); }
+.banner { margin-bottom: 12px; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface);
+  font-size: 13.5px; display: none; }
+.banner b { font-weight: 600; }
+.table-wrap { overflow-x: auto; padding: 4px 0 0; }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+th { text-align: left; font-weight: 500; color: var(--ink-2); font-size: 12.5px; padding: 8px 12px; white-space: nowrap; border-bottom: 1px solid var(--grid); }
+td { padding: 8px 12px; border-bottom: 1px solid var(--grid); white-space: nowrap; font-variant-numeric: tabular-nums; }
+tr:last-child td { border-bottom: 0; }
+td.num, th.num { text-align: right; }
+td .muted, .muted { color: var(--muted); }
+td input[type=number] { width: 64px; padding: 3px 6px; font-size: 13px; }
+.toolbar { display: flex; align-items: center; gap: 12px; margin: 28px 0 10px; }
+.toolbar h2 { margin: 0; }
+.toolbar label { font-size: 13px; color: var(--ink-2); display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+.empty { padding: 26px 12px; text-align: center; color: var(--muted); font-size: 13.5px; }
+footer { margin-top: 22px; font-size: 12.5px; color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>BTC 5 分钟预测记录器</h1>
+    <span class="badge">只记录 · 不下单</span>
+    <span class="spacer"></span>
+    <span class="status"><span class="dot" id="dot"></span><span id="health">连接中…</span></span>
+  </header>
+
+  <div class="banner" id="banner"></div>
+
+  <section class="tiles">
+    <div class="card tile"><div class="label">现货价</div><div class="value" id="price">—</div><div class="sub">BTC/USDT</div></div>
+    <div class="card tile"><div class="label">目标价(本轮开盘)</div><div class="value" id="open">—</div><div class="sub" id="roundTime"></div></div>
+    <div class="card tile"><div class="label">偏离目标价</div><div class="value" id="dev">—</div><div class="sub" id="devSub"></div></div>
+    <div class="card tile"><div class="label">本轮剩余</div><div class="value" id="left">—</div>
+      <div class="meter" id="meter" title="竖线为两个检查点"><b></b></div></div>
+  </section>
+
+  <section class="card chart-card">
+    <div class="chart-head"><strong>本轮现货价与目标价</strong><span id="volNote"></span></div>
+    <div id="chart"><svg id="svg" role="img" aria-label="本轮 BTC 现货价走势"></svg><div id="tip"></div></div>
+    <div class="legend">
+      <span><i class="key-line"></i>现货价</span>
+      <span><i class="key-target"></i>目标价</span>
+      <span><i class="key-band"></i>偏离不足 0.02%,不下单</span>
+    </div>
+  </section>
+
+  <section class="cps" id="cps"></section>
+
+  <h2>验证统计</h2>
+  <section class="tiles" id="stats"></section>
+
+  <div class="toolbar">
+    <h2>信号记录</h2><span class="spacer"></span>
+    <label><input type="checkbox" id="showAll"> 显示无信号的检查点</label>
+  </div>
+  <section class="card" style="padding:0"><div class="table-wrap" id="history"></div></section>
+
+  <footer>目标价取现货在本轮第一秒的开盘价,结算取最后一秒的收盘价,可能与 App 的口径略有差别。没填 App 价格的信号按最高买入价估算盈亏,每笔 $<span id="stake">1</span>,平局按输计算。时间为北京时间。</footer>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const usd = v => v.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+const pct = (v, d = 1) => (v * 100).toFixed(d) + '%';
+const mmss = s => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
+const signed = (v, f) => (v > 0 ? '+' : v < 0 ? '−' : '') + f(Math.abs(v));
+const money = v => signed(v, x => '$' + x.toFixed(2));
+const bjTime = ts => new Date(ts * 1000).toLocaleTimeString('zh-CN', {timeZone: 'Asia/Shanghai', hour12: false, hour: '2-digit', minute: '2-digit'});
+const bjDate = ts => new Date(ts * 1000).toLocaleDateString('zh-CN', {timeZone: 'Asia/Shanghai', month: 'numeric', day: 'numeric'});
+const sideChip = side => side === 'up' ? '<span class="chip up"><i>▲</i>涨</span>' : side === 'down' ? '<span class="chip down"><i>▼</i>跌</span>' : '';
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+
+let state = null, hoverX = null, lastRound = null;
+
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error || r.status);
+  return data;
+}
+
+/* ---------- 实时状态 ---------- */
+function renderState(s) {
+  state = s;
+  $('dot').className = 'dot ' + (s.healthy ? 'ok' : 'bad');
+  $('health').textContent = s.healthy ? '行情正常' :
+    (s.stale_s == null ? '尚未取得行情' : `行情延迟 ${Math.round(s.stale_s)} 秒`) + (s.error ? ' · ' + s.error : '');
+  $('stake').textContent = s.stake;
+  const banner = $('banner');
+  if (s.risk_blocked) { banner.style.display = 'block'; banner.innerHTML = `<b>风控暂停:</b>${esc(s.risk_blocked)}。期间出现的信号只记录,不计入统计。`; }
+  else banner.style.display = 'none';
+
+  const r = s.round;
+  if (!r) return;
+  $('price').textContent = r.price != null ? usd(r.price) : '—';
+  $('open').textContent = r.open != null ? usd(r.open) : '—';
+  $('roundTime').textContent = `${bjTime(r.start)} – ${bjTime(r.start + 300)}`;
+  if (r.dev_usd != null) {
+    $('dev').textContent = signed(r.dev_usd, v => '$' + usd(v));
+    $('devSub').innerHTML = sideChip(r.dev_usd > 0 ? 'up' : r.dev_usd < 0 ? 'down' : '') + ' ' +
+      signed(r.dev_pct, v => v.toFixed(3) + '%') + (Math.abs(r.dev_pct) < 0.02 ? ' · 不足 0.02%' : '');
+  }
+  $('left').textContent = mmss(300 - r.elapsed);
+  const meter = $('meter');
+  meter.firstElementChild.style.width = (r.elapsed / 300 * 100) + '%';
+  if (!meter.dataset.marks) {
+    s.checkpoints.forEach(c => { const m = document.createElement('s'); m.style.left = (c.elapsed / 300 * 100) + '%'; meter.appendChild(m); });
+    meter.dataset.marks = 1;
+  }
+  $('volNote').textContent = r.range30 == null ? '行情数据不足 30 分钟,暂不出信号' :
+    `过去 30 分钟高低价差 ${r.range30.toFixed(2)}% · ` + (r.high_vol ? '高波动,按小一档查表' : '波动正常');
+  renderCheckpoints(s);
+  drawChart();
+  if (lastRound !== r.start) { lastRound = r.start; loadSummary(); }
+}
+
+function renderCheckpoints(s) {
+  const wrap = $('cps');
+  s.checkpoints.forEach((c, i) => {
+    let el = wrap.children[i];
+    if (!el) { el = document.createElement('div'); wrap.appendChild(el); }
+    const e = c.eval;
+    const key = [s.round.start, c.status, e && e.id, e && e.app_price, e && e.blocked].join('|');
+    if (el.dataset.key !== key) {
+      el.dataset.key = key;
+      el.className = 'card cp' + (e && e.signal ? ' signal' : '');
+      const top = `<div class="top"><span>第 ${c.cp} 次 · 开盘后 ${c.label}</span><span class="spacer"></span><span class="count"></span></div>`;
+      let body;
+      if (c.status === 'pending') body = `<div class="main muted">等待中</div><div class="detail">到点后按当时的偏离查表</div>`;
+      else if (c.status === 'missed') body = `<div class="main muted">已错过</div><div class="detail">到点时程序未运行或行情延迟</div>`;
+      else {
+        const devTxt = `偏离 ${signed(e.dev_usd, v => '$' + usd(v))}(${signed(e.dev_pct, v => v.toFixed(3) + '%')})`;
+        if (!e.signal) body = `<div class="main muted">无信号</div><div class="detail">${esc(e.reason || '')} · ${devTxt}</div>`;
+        else {
+          const ret = (1 / e.max_price - 1) * 100;
+          body = `<div class="main">买 ${sideChip(e.side)} 价格不高于 ${pct(e.max_price, 0)}</div>
+            <div class="detail">${devTxt} · 档位 ${esc(e.row)} · 历史胜率 ${pct(e.table_p)} · 收益率至少 ${ret.toFixed(0)}%${e.high_vol ? ' · 高波动已降档' : ''}</div>
+            ${e.blocked ? `<div class="note">风控暂停中(${esc(e.blocked)}),这条只记录。</div>` : ''}
+            ${priceBox(e)}`;
+        }
+      }
+      el.innerHTML = top + body;
+    }
+    const count = el.querySelector('.count');
+    count.textContent = c.status === 'pending' ? '还有 ' + mmss(Math.max(0, c.elapsed - s.round.elapsed)) : '';
+  });
+}
+
+function verdict(e) {
+  if (e.app_price == null) return '';
+  return e.app_price <= e.max_price + 1e-9
+    ? `<span class="verdict win"><i>✓</i> 可成交,收益率 ${((1 / e.app_price - 1) * 100).toFixed(0)}%</span>`
+    : `<span class="verdict lose"><i>✕</i> 高于门槛,不下</span>`;
+}
+function priceBox(e) {
+  return `<form class="pricebox" data-id="${e.id}">
+    <label for="ap${e.id}">App 上这一边的卖一价</label>
+    <input id="ap${e.id}" type="number" inputmode="decimal" min="1" max="99" step="0.1" placeholder="%" value="${e.app_price != null ? +(e.app_price * 100).toFixed(1) : ''}">
+    <button type="submit">保存</button> ${verdict(e)}</form>`;
+}
+
+document.addEventListener('submit', async ev => {
+  const form = ev.target.closest('form[data-id]');
+  if (!form) return;
+  ev.preventDefault();
+  const v = form.querySelector('input').value.trim();
+  try {
+    await api('/api/app_price', {method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({id: +form.dataset.id, price: v === '' ? null : +v})});
+    form.querySelector('input').blur();
+    await Promise.all([loadState(), loadSummary()]);
+  } catch (err) { alert(err.message); }
+});
+
+/* ---------- 图表 ---------- */
+function drawChart() {
+  const r = state && state.round, svg = $('svg'), box = $('chart');
+  if (!r || r.open == null) return;
+  const W = box.clientWidth, H = box.clientHeight, m = {l: 62, r: 14, t: 22, b: 24};
+  const pts = r.series.map((v, i) => [i, v]).filter(p => p[1] != null);
+  const band = r.open * 0.0002;
+  let lo = Math.min(r.open - band * 2.5, ...pts.map(p => p[1])), hi = Math.max(r.open + band * 2.5, ...pts.map(p => p[1]));
+  const pad = (hi - lo) * 0.08; lo -= pad; hi += pad;
+  const x = t => m.l + t / 300 * (W - m.l - m.r), y = v => m.t + (hi - v) / (hi - lo) * (H - m.t - m.b);
+  const step = [5, 10, 20, 25, 50, 100, 200, 250, 500, 1000].find(s => (hi - lo) / s <= 5) || 2000;
+  let g = '';
+  for (let v = Math.ceil(lo / step) * step; v <= hi; v += step)
+    g += `<line x1="${m.l}" x2="${W - m.r}" y1="${y(v)}" y2="${y(v)}" stroke="var(--grid)"/><text x="${m.l - 8}" y="${y(v) + 4}" text-anchor="end">${v.toLocaleString('en-US')}</text>`;
+  for (let t = 0; t <= 300; t += 60)
+    g += `<text x="${x(t)}" y="${H - 6}" text-anchor="${t === 0 ? 'start' : t === 300 ? 'end' : 'middle'}">${mmss(t)}</text>`;
+  g += `<rect x="${m.l}" width="${W - m.l - m.r}" y="${y(r.open + band)}" height="${y(r.open - band) - y(r.open + band)}" fill="var(--wash)"/>`;
+  state.checkpoints.forEach(c => {
+    g += `<line x1="${x(c.elapsed)}" x2="${x(c.elapsed)}" y1="${m.t - 4}" y2="${H - m.b}" stroke="var(--axis)"/><text x="${x(c.elapsed) + (c.cp === 1 ? -4 : 4)}" y="${m.t - 9}" text-anchor="${c.cp === 1 ? 'end' : 'start'}">${c.label}</text>`;
+  });
+  g += `<line x1="${m.l}" x2="${W - m.r}" y1="${y(r.open)}" y2="${y(r.open)}" stroke="var(--ink-2)"/>`;
+  if (pts.length) {
+    g += `<path d="${pts.map((p, i) => (i ? 'L' : 'M') + x(p[0]).toFixed(1) + ' ' + y(p[1]).toFixed(1)).join('')}" fill="none" stroke="var(--series)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+    const last = pts[pts.length - 1];
+    g += `<circle cx="${x(last[0])}" cy="${y(last[1])}" r="5" fill="var(--series)" stroke="var(--surface)" stroke-width="2"/>`;
+  }
+  const tip = $('tip');
+  if (hoverX != null && pts.length) {
+    const t = Math.max(0, Math.min(pts[pts.length - 1][0], Math.round((hoverX - m.l) / (W - m.l - m.r) * 300)));
+    const p = pts.reduce((a, b) => Math.abs(b[0] - t) < Math.abs(a[0] - t) ? b : a);
+    g += `<line x1="${x(p[0])}" x2="${x(p[0])}" y1="${m.t}" y2="${H - m.b}" stroke="var(--ink-2)"/><circle cx="${x(p[0])}" cy="${y(p[1])}" r="5" fill="var(--series)" stroke="var(--surface)" stroke-width="2"/>`;
+    const d = p[1] - r.open;
+    tip.innerHTML = `$${usd(p[1])}<small>已过 ${mmss(p[0])} · 偏离 ${signed(d, v => '$' + usd(v))}(${signed(d / r.open * 100, v => v.toFixed(3) + '%')})</small>`;
+    tip.style.display = 'block';
+    const tw = tip.offsetWidth, left = x(p[0]) + 12 + tw > W ? x(p[0]) - 12 - tw : x(p[0]) + 12;
+    tip.style.left = left + 'px'; tip.style.top = Math.max(0, y(p[1]) - 44) + 'px';
+  } else tip.style.display = 'none';
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.innerHTML = g;
+}
+const chartBox = $('chart');
+const move = ev => { hoverX = (ev.touches ? ev.touches[0].clientX : ev.clientX) - chartBox.getBoundingClientRect().left; drawChart(); };
+chartBox.addEventListener('mousemove', move);
+chartBox.addEventListener('touchstart', move, {passive: true});
+chartBox.addEventListener('touchmove', move, {passive: true});
+['mouseleave', 'touchend'].forEach(n => chartBox.addEventListener(n, () => { hoverX = null; drawChart(); }));
+new ResizeObserver(drawChart).observe(chartBox);
+
+/* ---------- 统计与记录 ---------- */
+function tile(label, value, sub, extra = '') {
+  return `<div class="card tile"><div class="label">${label}</div><div class="value">${value}</div><div class="sub">${sub}</div>${extra}</div>`;
+}
+function renderSummary(d) {
+  const s = d.stats, none = '—';
+  $('stats').innerHTML =
+    tile('已结算信号', `${s.signals} <span class="muted" style="font-size:15px;font-weight:500">/ ${s.target}</span>`,
+      `已观察 ${s.rounds} 轮${s.blocked ? ` · 风控拦截 ${s.blocked} 条` : ''}`,
+      `<div class="meter"><b style="width:${Math.min(100, s.signals / s.target * 100)}%"></b></div>`) +
+    tile('实际胜率', s.win_rate == null ? none : pct(s.win_rate),
+      s.signals ? `表中预期 ${pct(s.avg_table_p)} · 平均门槛价 ${pct(s.avg_max_price)}` : '有信号结算后显示') +
+    tile('按门槛价估算盈亏', s.signals ? money(s.threshold_pnl) : none,
+      s.signals ? `今日 ${money(s.day_pnl)}` : '假设每笔都按最高买入价成交') +
+    tile('已填 App 价格', `${s.priced} <span class="muted" style="font-size:15px;font-weight:500">笔</span>`,
+      s.priced ? `其中 ${s.fillable} 笔低于门槛(${pct(s.fillable / s.priced, 0)})` : '信号出现时填入 App 的卖一价') +
+    tile('按 App 价估算盈亏', s.fillable ? money(s.fill_pnl) : none,
+      s.fillable ? `胜率 ${pct(s.fill_win_rate)} · 平均买入价 ${pct(s.fill_avg_price)}` : '只统计低于门槛的信号');
+
+  const box = $('history');
+  if (box.contains(document.activeElement) && document.activeElement.tagName === 'INPUT') return;
+  if (!d.history.length) { box.innerHTML = '<div class="empty">还没有记录。每轮在开盘后 3:30 和 4:00 各检查一次。</div>'; return; }
+  const rows = d.history.map(h => {
+    const dev = `${signed(h.dev_usd, v => '$' + usd(v))} <span class="muted">${signed(h.dev_pct, v => v.toFixed(3) + '%')}</span>`;
+    const when = `${bjDate(h.round_ts)} ${bjTime(h.round_ts)}`;
+    const cp = h.cp === 1 ? '3:30' : '4:00';
+    if (!h.signal) return `<tr><td>${when}</td><td>${cp}</td><td class="num">${dev}</td><td>${sideChip(h.side)}</td><td colspan="5" class="muted">无信号:${esc(h.reason || '')}</td></tr>`;
+    let result = '<span class="muted">进行中</span>', pnl = '';
+    if (h.result) {
+      const win = h.result === h.side;
+      result = win ? '<span class="win"><i>✓</i> 赢</span>' : `<span class="lose"><i>✕</i> ${h.result === 'tie' ? '平' : '输'}</span>`;
+      if (h.blocked) pnl = `<span class="muted">风控拦截</span>`;
+      else if (!h.order) pnl = '<span class="muted">未成交</span>';
+      else pnl = money(h.order.pnl) + (h.app_price == null ? ' <span class="muted">按门槛价</span>' : '');
+    }
+    const input = `<form data-id="${h.id}" style="display:inline-flex;gap:6px;align-items:center"><input type="number" inputmode="decimal" min="1" max="99" step="0.1" aria-label="App 卖一价(%)" value="${h.app_price != null ? +(h.app_price * 100).toFixed(1) : ''}" placeholder="%"><button type="submit">存</button></form>`;
+    return `<tr><td>${when}</td><td>${cp}</td><td class="num">${dev}</td><td>${sideChip(h.side)}</td>
+      <td class="num">≤ ${pct(h.max_price, 0)}</td><td class="num">${pct(h.table_p)}</td><td>${input}</td><td>${result}</td><td class="num">${pnl}</td></tr>`;
+  }).join('');
+  box.innerHTML = `<table><thead><tr><th>轮次</th><th>检查点</th><th class="num">偏离</th><th>方向</th><th class="num">最高买入价</th><th class="num">历史胜率</th><th>App 卖一价</th><th>结果</th><th class="num">估算盈亏</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+async function loadState() {
+  try { renderState(await api('/api/state')); }
+  catch (e) { $('dot').className = 'dot bad'; $('health').textContent = '连不上记录器'; }
+}
+async function loadSummary() {
+  try { renderSummary(await api('/api/summary' + ($('showAll').checked ? '?all=1' : ''))); } catch (e) {}
+}
+$('showAll').addEventListener('change', loadSummary);
+loadState(); loadSummary();
+setInterval(loadState, 1000);
+setInterval(loadSummary, 5000);
+</script>
+</body>
+</html>
