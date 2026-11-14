@@ -1,6 +1,6 @@
 # BTC 行情监控简报
 
-- 生成时间：2026-11-14 15:43 UTC（北京 23:43）
+- 生成时间：2026-11-14 15:53 UTC（北京 23:53）
 - 性质：只读信息汇总与规则化归类，不构成任何买卖建议，不预测价格或时间。
 - 标注约定：**【事实】** 为接口原始值或对其直接算术计算；**【推断】** 为按固定规则得出的归类，均附依据。方括号内是来源编号与获取时间（UTC），编号对应文末「数据源状态」。
 
@@ -9,48 +9,49 @@
 **【推断】当前阶段归类：下跌**
 
 依据：
-- 近 30 日高点 84,898.00（10-21），现价距高点 -22.75%
-- 近 30 日低点 65,066.66（11-14，即当日），现价距低点 +0.80%
+- 近 30 日高点 84,898.00（10-21），现价距高点 -22.73%
+- 近 30 日低点 65,066.66（11-14，即当日），现价距低点 +0.82%
 - 规则：窗口最低价出现在当日或前一日，即最近两根日线内仍在创新低 → 归为下跌
-- 止跌信号佐证：可判定的 3 项中出现 0 项
-- 说明：有 2 项信号因数据获取失败无法判定（资金费率转负、未平仓量大幅下降（杠杆出清）），佐证不完整
+- 止跌信号佐证：可判定的 4 项中出现 0 项
+- 说明：有 1 项信号因数据获取失败无法判定（资金费率转负），佐证不完整
 - 说明：这是按上述固定规则对当前状态的归类，不是对后续走势的预测；阈值可在脚本顶部调整
+- 说明：实时合约接口不可用，未平仓量、多空账户比、合约成交量改用币安官方归档的 T-1 数据，相关行均标「归档 T-1」并写明截至时间；资金费率和标记价格归档里没有，仍为获取失败。
 - 本次有 8 个数据源获取失败：F1、F2、F3、F4、F5、F6、F7、M1（详见文末），相关条目均标为「获取失败」。
 
 ## 1. 价格
 
 | 项目 | 数值 | 来源与获取时间 |
 |---|---|---|
-| 现货现价（BTCUSDT） | 65,586.01 USDT | [S1 15:43:22 UTC] |
-| 24 小时涨跌幅（滚动） | -3.77% | [S1 15:43:22 UTC] |
-| 24 小时最高 / 最低 | 69,134.01 / 65,066.66 | [S1 15:43:22 UTC] |
-| 永续标记价格 | 获取失败（HTTP 451：对方按访问所在地区拒绝服务（币安合约接口的地区限制）） | [F1 15:43:22 UTC] |
-| 7 日涨跌幅 | -13.43%（基准 75,758.01，取 2026-11-07 16:00 UTC（北京 11-08 00:00） 开盘的 4 小时 K 线开盘价） | [S3 15:43:22 UTC；S1 15:43:22 UTC] |
-| 近 7 日高点 / 距离 | 76,200.00（11-08） / -13.93% | [S2 15:43:22 UTC；S1 15:43:22 UTC] |
-| 近 7 日低点 / 距离 | 65,066.66（11-14） / +0.80% | [S2 15:43:22 UTC；S1 15:43:22 UTC] |
-| 近 30 日高点 / 距离 | 84,898.00（10-21） / -22.75% | [S2 15:43:22 UTC；S1 15:43:22 UTC] |
-| 近 30 日低点 / 距离 | 65,066.66（11-14） / +0.80% | [S2 15:43:22 UTC；S1 15:43:22 UTC] |
-| 近 90 日高点 / 距离 | 87,395.67（09-21） / -24.96% | [S2 15:43:22 UTC；S1 15:43:22 UTC] |
-| 近 90 日低点 / 距离 | 62,751.10（08-17） / +4.52% | [S2 15:43:22 UTC；S1 15:43:22 UTC] |
+| 现货现价（BTCUSDT） | 65,599.99 USDT | [S1 15:53:06 UTC] |
+| 24 小时涨跌幅（滚动） | -4.51% | [S1 15:53:06 UTC] |
+| 24 小时最高 / 最低 | 69,134.01 / 65,066.66 | [S1 15:53:06 UTC] |
+| 永续标记价格 | 获取失败（HTTP 451：对方按访问所在地区拒绝服务（币安合约接口的地区限制）） | [F1 15:53:07 UTC] |
+| 7 日涨跌幅 | -13.41%（基准 75,758.01，取 2026-11-07 16:00 UTC（北京 11-08 00:00） 开盘的 4 小时 K 线开盘价） | [S3 15:53:06 UTC；S1 15:53:06 UTC] |
+| 近 7 日高点 / 距离 | 76,200.00（11-08） / -13.91% | [S2 15:53:06 UTC；S1 15:53:06 UTC] |
+| 近 7 日低点 / 距离 | 65,066.66（11-14） / +0.82% | [S2 15:53:06 UTC；S1 15:53:06 UTC] |
+| 近 30 日高点 / 距离 | 84,898.00（10-21） / -22.73% | [S2 15:53:06 UTC；S1 15:53:06 UTC] |
+| 近 30 日低点 / 距离 | 65,066.66（11-14） / +0.82% | [S2 15:53:06 UTC；S1 15:53:06 UTC] |
+| 近 90 日高点 / 距离 | 87,395.67（09-21） / -24.94% | [S2 15:53:06 UTC；S1 15:53:06 UTC] |
+| 近 90 日低点 / 距离 | 62,751.10（08-17） / +4.54% | [S2 15:53:06 UTC；S1 15:53:06 UTC] |
 
 以上均为【事实】。日线按 UTC 0 点切分，窗口包含当日未收盘的 K 线。
 
-【事实】4 小时级别：最近 6 根已收盘 K 线（约 24 小时）的最低 66,456.00、最高 70,214.31；再往前 6 根的最低 67,568.00、最高 73,152.01。低点下移，高点下移。[S3 15:43:22 UTC]
+【事实】4 小时级别：最近 6 根已收盘 K 线（约 24 小时）的最低 66,456.00、最高 70,214.31；再往前 6 根的最低 67,568.00、最高 73,152.01。低点下移，高点下移。[S3 15:53:06 UTC]
 
 ## 2. 关键指标与 7 日均值对比
 
 | 指标 | 当前值 | 7 日均值 | 当前相对均值 | 来源与获取时间 |
 |---|---|---|---|---|
-| 资金费率（已结算） | 获取失败（同一主机已被拒绝（HTTP 451），未重复请求） | — | — | [F2 15:43:22 UTC] |
-| 资金费率（当期预测） | 获取失败（HTTP 451：对方按访问所在地区拒绝服务（币安合约接口的地区限制）） | — | — | [F1 15:43:22 UTC] |
-| 未平仓量（永续） | 获取失败（同一主机已被拒绝（HTTP 451），未重复请求） | — | — | [F3 15:43:22 UTC；F4 15:43:22 UTC] |
-| 多空账户比 | 获取失败（同一主机已被拒绝（HTTP 451），未重复请求） | — | — | [F5 15:43:22 UTC] |
-| 现货成交量（滚动 24 小时） | 23,066 BTC | 15,407 BTC（最近 7 根已收盘日线） | +49.71% | [S1 15:43:22 UTC；S2 15:43:22 UTC] |
-| 永续成交量 | 获取失败（同一主机已被拒绝（HTTP 451），未重复请求） | — | — | [F7 15:43:22 UTC] |
-| 永续主动买卖量比 | 获取失败（同一主机已被拒绝（HTTP 451），未重复请求） | — | — | [F6 15:43:22 UTC] |
-| 现货主动买入占比（当日未收盘，补充） | 44.6% | 50.8% | -6.2 个百分点 | [S2 15:43:22 UTC] |
-| 恐惧贪婪指数（11-14 值） | 13（极度恐惧） | 27.3（此前 7 日） | -14.3 点 | [G1 15:43:23 UTC] |
-| 美国现货 BTC ETF 净流量（11-11 交易日） | -299.9 百万美元 | -225.4 百万美元（此前 7 个交易日） | — | [E1 15:43:23 UTC] |
+| 资金费率（已结算） | 获取失败（同一主机已被拒绝（HTTP 451），未重复请求） | — | — | [F2 15:53:07 UTC] |
+| 资金费率（当期预测） | 获取失败（HTTP 451：对方按访问所在地区拒绝服务（币安合约接口的地区限制）） | — | — | [F1 15:53:07 UTC] |
+| 未平仓量（永续，**归档 T-1**，截至 2026-11-13 23:55 UTC（北京 11-14 07:55）） | 98,389 BTC（名义约 6.72 十亿美元） | 98,263 BTC（截至时间前 7 日） | +0.13% | [A1 15:53:09 UTC] |
+| 多空账户比（全市场账户数，**归档 T-1**，截至 2026-11-13 23:55 UTC（北京 11-14 07:55）） | 3.233（折算多 76.4% / 空 23.6%） | 2.968（截至时间前 7 日） | +8.93% | [A1 15:53:09 UTC] |
+| 现货成交量（滚动 24 小时） | 22,984 BTC | 15,407 BTC（最近 7 根已收盘日线） | +49.17% | [S1 15:53:06 UTC；S2 15:53:06 UTC] |
+| 永续成交量（最近一根已收盘日线 11-13，**归档 T-1**） | 281,461 BTC | 127,234 BTC（此前 7 日） | +121.21% | [A2 15:53:11 UTC] |
+| 永续主动买卖量比（11-13 全日，买/卖，**归档 T-1**） | 0.898（买 133,183 / 卖 148,278 BTC） | 0.967（此前 7 日合计口径） | -7.08% | [A2 15:53:11 UTC] |
+| 现货主动买入占比（当日未收盘，补充） | 44.8% | 50.8% | -6.0 个百分点 | [S2 15:53:06 UTC] |
+| 恐惧贪婪指数（11-14 值） | 13（极度恐惧） | 27.3（此前 7 日） | -14.3 点 | [G1 15:53:13 UTC] |
+| 美国现货 BTC ETF 净流量（11-11 交易日） | -299.9 百万美元 | -225.4 百万美元（此前 7 个交易日） | — | [E1 15:53:12 UTC] |
 
 以上均为【事实】。「7 日均值」的口径写在各行括号内。恐惧贪婪指数来源：[Alternative.me](https://alternative.me/crypto/fear-and-greed-index/)。ETF 数据来源：[The Commoner Bitcoin ETF Tracker by TFTC](https://www.tftc.io/bitcoin-etf-flows)（CC BY 4.0，上游见文末），属于二手汇总而非发行方原始披露。
 
@@ -58,11 +59,11 @@
 
 | # | 信号 | 状态 | 来源与获取时间 |
 |---|---|---|---|
-| 1 | 放量长下影线 | ❌ 未出现 | [S2 15:43:22 UTC] |
-| 2 | 连续 2 到 3 天不创新低 | ❌ 未出现 | [S2 15:43:22 UTC] |
-| 3 | 资金费率转负 | ⚠️ 无法判定（获取失败） | [F1 15:43:22 UTC；F2 15:43:22 UTC] |
-| 4 | 未平仓量大幅下降（杠杆出清） | ⚠️ 无法判定（获取失败） | [F3 15:43:22 UTC；F4 15:43:22 UTC] |
-| 5 | ETF 由净流出转为净流入 | ❌ 未出现 | [E1 15:43:23 UTC] |
+| 1 | 放量长下影线 | ❌ 未出现 | [S2 15:53:06 UTC] |
+| 2 | 连续 2 到 3 天不创新低 | ❌ 未出现 | [S2 15:53:06 UTC] |
+| 3 | 资金费率转负 | ⚠️ 无法判定（获取失败） | [F1 15:53:07 UTC；F2 15:53:07 UTC] |
+| 4 | 未平仓量大幅下降（杠杆出清） | ❌ 未出现（按 T-1 归档数据） | [A1 15:53:09 UTC] |
+| 5 | ETF 由净流出转为净流入 | ❌ 未出现 | [E1 15:53:12 UTC] |
 
 **1. 放量长下影线：未出现**
 - 【推断】判定规则：最近 3 根已收盘日线中，任意一根同时满足：下影线 ≥ 实体的 2 倍、下影线 ≥ 当日振幅的 50%、成交量 ≥ 此前 7 日均量的 1.5 倍
@@ -79,9 +80,10 @@
 - 【推断】判定规则：最近一次已结算资金费率 < 0，或当期预测资金费率 < 0
 - 【事实】资金费率数据获取失败
 
-**4. 未平仓量大幅下降（杠杆出清）：无法判定**
+**4. 未平仓量大幅下降（杠杆出清）：未出现（按 T-1 归档数据）**
 - 【推断】判定规则：以 BTC 计的未平仓量较 7 日峰值回落 ≥10%，或较 24 小时前下降 ≥5%（用币本位数量，排除价格下跌本身的影响）
-- 【事实】未平仓量历史获取失败
+- 【事实】当前 98,389 BTC；7 日峰值 102,353 BTC，较峰值 -3.87%；较 24 小时前 -2.73%
+- 【事实】以上取自币安官方归档，时间基准为 2026-11-13 23:55 UTC（北京 11-14 07:55），其后约 16 小时的变化未包含
 
 **5. ETF 由净流出转为净流入：未出现**
 - 【推断】判定规则：最新一个交易日为净流入，往前追溯这段连续净流入不超过 3 个交易日，且它之前的那个交易日为净流出
@@ -92,26 +94,26 @@
 
 ## 4. 过去 24 小时的重要消息
 
-### 币安官方公告 [B1 15:43:22 UTC]
+### 币安官方公告 [B1 15:53:11 UTC]
 公告页：https://www.binance.com/en/support/announcement　收录分类：新币上线、下架、币安最新动态（含规则变更）、维护与升级、API 更新
 - 2026-11-14 03:52 UTC（北京 11:52） 〔币安最新动态（含规则变更）〕[Recovery Update: Withdrawals Reopened for More Networks (2026-11-14)](https://www.binance.com/en/support/announcement/detail/432646a7f7c34c2a85b69db99af32c16)
 
-### 美联储新闻稿 [N1 15:43:24 UTC]
+### 美联储新闻稿 [N1 15:53:14 UTC]
 - 2026-11-13 21:15 UTC（北京 11-14 05:15） 〔Banking and Consumer Regulatory Policy〕[Agencies extend comment period for proposed third-party risk management guidance](https://www.federalreserve.gov/newsevents/pressreleases/bcreg20261113a.htm)
 
-### SEC 新闻稿 [N2 15:43:25 UTC]
+### SEC 新闻稿 [N2 15:53:14 UTC]
 - 2026-11-13 16:57 UTC（北京 11-14 00:57） [SEC Proposes Executive and Director Compensation Disclosure Reforms](https://www.sec.gov/newsroom/press-releases/2026-114-sec-proposes-executive-director-compensation-disclosure-reforms)
 
 以上均为【事实】：标题保留原文，时间为来源给出的发布时间。脚本没有判断消息的利好或利空。
 
 ## 5. 未来 7 天需要关注的事件
 
-### 美国 CPI、非农 [M1 15:43:24 UTC]
+### 美国 CPI、非农 [M1 15:53:13 UTC]
 - 获取失败（HTTP 403：对方拒绝自动访问（Access Denied））
 - BLS 要求自动访问附联系方式，可设置环境变量 BTC_BRIEF_CONTACT 后重试
 - 可人工核对官方日程页：https://www.bls.gov/schedule/news_release/
 
-### 美联储 [C1 15:43:24 UTC]
+### 美联储 [C1 15:53:14 UTC]
 - 2026-11-18 19:00 UTC（北京 11-19 03:00）　FOMC 会议纪要｜FOMC Minutes：Meeting of October 27-28　[来源](https://www.federalreserve.gov/newsevents/calendar.htm)
 - 官员讲话与其他日程（8 项）：
   - 2026-11-16 10:00 UTC（北京 18:00）　Speech - Governor Michael S. Barr：Artificial Intelligence and Financial Stability　[来源](https://www.federalreserve.gov/newsevents/calendar.htm)
@@ -130,23 +132,25 @@
 
 | 编号 | 数据源 | 状态 | 获取时间 | 地址 |
 |---|---|---|---|---|
-| S1 | 币安现货 24 小时行情 | 成功 | 2026-11-14 15:43:22 UTC | https://data-api.binance.vision/api/v3/ticker/24hr?symbol=BTCUSDT |
-| S2 | 币安现货日线 K 线 | 成功 | 2026-11-14 15:43:22 UTC | https://data-api.binance.vision/api/v3/klines?symbol=BTCUSDT&interval=1d&limit=120 |
-| S3 | 币安现货 4 小时 K 线 | 成功 | 2026-11-14 15:43:22 UTC | https://data-api.binance.vision/api/v3/klines?symbol=BTCUSDT&interval=4h&limit=60 |
-| F1 | 币安永续 标记价格与当期资金费率 | 获取失败：HTTP 451：对方按访问所在地区拒绝服务（币安合约接口的地区限制） | 2026-11-14 15:43:22 UTC | https://fapi.binance.com/fapi/v1/premiumIndex?symbol=BTCUSDT |
-| F2 | 币安永续 资金费率历史 | 获取失败：同一主机已被拒绝（HTTP 451），未重复请求 | 2026-11-14 15:43:22 UTC | https://fapi.binance.com/fapi/v1/fundingRate?symbol=BTCUSDT&limit=100 |
-| F3 | 币安永续 当前未平仓量 | 获取失败：同一主机已被拒绝（HTTP 451），未重复请求 | 2026-11-14 15:43:22 UTC | https://fapi.binance.com/fapi/v1/openInterest?symbol=BTCUSDT |
-| F4 | 币安永续 未平仓量历史（1h） | 获取失败：同一主机已被拒绝（HTTP 451），未重复请求 | 2026-11-14 15:43:22 UTC | https://fapi.binance.com/futures/data/openInterestHist?symbol=BTCUSDT&period=1h&limit=200 |
-| F5 | 币安永续 多空账户比（1h） | 获取失败：同一主机已被拒绝（HTTP 451），未重复请求 | 2026-11-14 15:43:22 UTC | https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=BTCUSDT&period=1h&limit=200 |
-| F6 | 币安永续 主动买卖量（1h） | 获取失败：同一主机已被拒绝（HTTP 451），未重复请求 | 2026-11-14 15:43:22 UTC | https://fapi.binance.com/futures/data/takerlongshortRatio?symbol=BTCUSDT&period=1h&limit=200 |
-| F7 | 币安永续 日线 K 线 | 获取失败：同一主机已被拒绝（HTTP 451），未重复请求 | 2026-11-14 15:43:22 UTC | https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=1d&limit=30 |
-| B1 | 币安官方公告页 | 成功 | 2026-11-14 15:43:22 UTC | https://www.binance.com/bapi/composite/v1/public/cms/article/list/query?type=1&pageNo=1&pageSize=20 |
-| E1 | 美国现货 BTC ETF 每日净流量（TFTC 汇总） | 成功<br>上游：SoSoValue (daily aggregates and per-fund flows); issuer disclosures as tabulated by Farside Investors (per-fund history through mid-2026); mempool.space (BTC price, ~21:00 UTC mark). | 2026-11-14 15:43:23 UTC | https://www.tftc.io/bitcoin-etf-flows/data.json |
-| G1 | 恐惧贪婪指数（Alternative.me） | 成功 | 2026-11-14 15:43:23 UTC | https://api.alternative.me/fng/?limit=8 |
-| M1 | BLS 发布日程（CPI、非农） | 获取失败：HTTP 403：对方拒绝自动访问（Access Denied）<br>BLS 要求自动访问附联系方式，可设置环境变量 BTC_BRIEF_CONTACT 后重试 | 2026-11-14 15:43:24 UTC | https://www.bls.gov/schedule/news_release/bls.ics |
-| C1 | 美联储官网日历 | 成功 | 2026-11-14 15:43:24 UTC | https://www.federalreserve.gov/json/calendar.json |
-| N1 | 美联储新闻稿 RSS | 成功 | 2026-11-14 15:43:24 UTC | https://www.federalreserve.gov/feeds/press_all.xml |
-| N2 | SEC 新闻稿 RSS | 成功 | 2026-11-14 15:43:25 UTC | https://www.sec.gov/news/pressreleases.rss |
+| S1 | 币安现货 24 小时行情 | 成功 | 2026-11-14 15:53:06 UTC | https://data-api.binance.vision/api/v3/ticker/24hr?symbol=BTCUSDT |
+| S2 | 币安现货日线 K 线 | 成功 | 2026-11-14 15:53:06 UTC | https://data-api.binance.vision/api/v3/klines?symbol=BTCUSDT&interval=1d&limit=120 |
+| S3 | 币安现货 4 小时 K 线 | 成功 | 2026-11-14 15:53:06 UTC | https://data-api.binance.vision/api/v3/klines?symbol=BTCUSDT&interval=4h&limit=60 |
+| F1 | 币安永续 标记价格与当期资金费率 | 获取失败：HTTP 451：对方按访问所在地区拒绝服务（币安合约接口的地区限制） | 2026-11-14 15:53:07 UTC | https://fapi.binance.com/fapi/v1/premiumIndex?symbol=BTCUSDT |
+| F2 | 币安永续 资金费率历史 | 获取失败：同一主机已被拒绝（HTTP 451），未重复请求 | 2026-11-14 15:53:07 UTC | https://fapi.binance.com/fapi/v1/fundingRate?symbol=BTCUSDT&limit=100 |
+| F3 | 币安永续 当前未平仓量 | 获取失败：同一主机已被拒绝（HTTP 451），未重复请求 | 2026-11-14 15:53:07 UTC | https://fapi.binance.com/fapi/v1/openInterest?symbol=BTCUSDT |
+| F4 | 币安永续 未平仓量历史（1h） | 获取失败：同一主机已被拒绝（HTTP 451），未重复请求 | 2026-11-14 15:53:07 UTC | https://fapi.binance.com/futures/data/openInterestHist?symbol=BTCUSDT&period=1h&limit=200 |
+| F5 | 币安永续 多空账户比（1h） | 获取失败：同一主机已被拒绝（HTTP 451），未重复请求 | 2026-11-14 15:53:07 UTC | https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=BTCUSDT&period=1h&limit=200 |
+| F6 | 币安永续 主动买卖量（1h） | 获取失败：同一主机已被拒绝（HTTP 451），未重复请求 | 2026-11-14 15:53:07 UTC | https://fapi.binance.com/futures/data/takerlongshortRatio?symbol=BTCUSDT&period=1h&limit=200 |
+| F7 | 币安永续 日线 K 线 | 获取失败：同一主机已被拒绝（HTTP 451），未重复请求 | 2026-11-14 15:53:07 UTC | https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=1d&limit=30 |
+| A1 | 币安官方归档：永续未平仓量、多空账户比（T-1，5 分钟粒度） | 成功<br>T-1 归档，非实时。已取 8 个日文件（11-06 至 11-13），数据截至 2026-11-13 23:55 UTC | 2026-11-14 15:53:09 UTC | https://data.binance.vision/data/futures/um/daily/metrics/BTCUSDT/BTCUSDT-metrics-<日期>.zip |
+| A2 | 币安官方归档：永续日线 K 线（T-1） | 成功<br>T-1 归档，非实时。已取 8 个日文件（11-06 至 11-13），数据截至 2026-11-13 23:59 UTC | 2026-11-14 15:53:11 UTC | https://data.binance.vision/data/futures/um/daily/klines/BTCUSDT/1d/BTCUSDT-1d-<日期>.zip |
+| B1 | 币安官方公告页 | 成功 | 2026-11-14 15:53:11 UTC | https://www.binance.com/bapi/composite/v1/public/cms/article/list/query?type=1&pageNo=1&pageSize=20 |
+| E1 | 美国现货 BTC ETF 每日净流量（TFTC 汇总） | 成功<br>上游：SoSoValue (daily aggregates and per-fund flows); issuer disclosures as tabulated by Farside Investors (per-fund history through mid-2026); mempool.space (BTC price, ~21:00 UTC mark). | 2026-11-14 15:53:12 UTC | https://www.tftc.io/bitcoin-etf-flows/data.json |
+| G1 | 恐惧贪婪指数（Alternative.me） | 成功 | 2026-11-14 15:53:13 UTC | https://api.alternative.me/fng/?limit=8 |
+| M1 | BLS 发布日程（CPI、非农） | 获取失败：HTTP 403：对方拒绝自动访问（Access Denied）<br>BLS 要求自动访问附联系方式，可设置环境变量 BTC_BRIEF_CONTACT 后重试 | 2026-11-14 15:53:13 UTC | https://www.bls.gov/schedule/news_release/bls.ics |
+| C1 | 美联储官网日历 | 成功 | 2026-11-14 15:53:14 UTC | https://www.federalreserve.gov/json/calendar.json |
+| N1 | 美联储新闻稿 RSS | 成功 | 2026-11-14 15:53:14 UTC | https://www.federalreserve.gov/feeds/press_all.xml |
+| N2 | SEC 新闻稿 RSS | 成功 | 2026-11-14 15:53:14 UTC | https://www.sec.gov/news/pressreleases.rss |
 
 本脚本只发送 GET 请求，不携带任何 API Key，不包含下单、划转等写操作。
 

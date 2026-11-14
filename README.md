@@ -17,11 +17,27 @@ pip install -r requirements.txt
 python btc_brief.py                 # 打印简报，并保存到 reports/btc_brief_<UTC 时间>.md
 python btc_brief.py --no-save       # 只打印
 python btc_brief.py --tz Asia/Tokyo # 换一个附带显示的本地时区（默认北京时间）
+python btc_brief.py --archive-fallback   # 实时合约接口失败时，用币安官方归档的 T-1 数据回补（见下）
 ```
 
 依赖只有 `requests`（Windows 上另需 `tzdata` 提供时区库，已写在 `requirements.txt` 里）。
 
-可选环境变量 `BTC_BRIEF_CONTACT`：BLS 和 SEC 要求自动访问在 User-Agent 里留联系方式。设置后脚本会把它附在 User-Agent 中，例如 `export BTC_BRIEF_CONTACT=you@example.com`。不设置时 BLS 日程大概率返回 403，简报里会如实写「获取失败」。
+可选环境变量 `BTC_BRIEF_CONTACT`：BLS 要求自动访问在 User-Agent 里留联系方式。设置后，脚本**只在请求 `www.bls.gov` 时**把它附在 User-Agent 里，其他站点收到的都是不含个人信息的通用标识。例如 `export BTC_BRIEF_CONTACT=you@example.com`。不设置时 BLS 日程返回 403，简报里会如实写「获取失败」。这个值不要写进代码或提交到仓库。
+
+### 在受币安地区限制的环境里运行（例如美国的云服务器）
+
+实时合约接口 `fapi.binance.com` 在这类环境返回 HTTP 451。加 `--archive-fallback` 后，脚本会在实时接口失败时改从[币安官方公开数据归档](https://data.binance.vision)取数：
+
+| 能回补 | 口径 |
+|---|---|
+| 未平仓量、多空账户比 | `metrics` 日文件，5 分钟粒度，最新到前一个 UTC 日 23:55 |
+| 合约成交量、主动买卖量比 | 日线文件，最新到前一个 UTC 日 |
+
+归档按日发布，所以这些是 **T-1 数据，不是实时值**。简报里相关行都标「归档 T-1」并写明截至时间，对应的止跌信号也标「按 T-1 归档数据」。归档最新一条早于 48 小时则不采用。
+
+**资金费率和标记价格补不了**：归档里资金费率只有月度文件，当月的要到下月才发布。这两项仍是「获取失败」，止跌信号第 3 项仍是「无法判定」。
+
+不加这个参数时，脚本不会碰归档，失败就是失败。
 
 离线测试（不访问网络）：
 
@@ -30,7 +46,7 @@ pip install -r requirements-dev.txt
 python -m pytest -q
 ```
 
-运行示例见 [`examples/sample_output.md`](examples/sample_output.md)，是 2026-11-14 的一次真实运行输出。
+运行示例见 [`examples/sample_output.md`](examples/sample_output.md)，是 2026-11-14 在云环境里用 `--archive-fallback` 的一次真实运行输出。
 
 ## 数据源
 
@@ -40,6 +56,7 @@ python -m pytest -q
 |---|---|---|---|
 | S1–S3 | 币安现货 BTCUSDT：24 小时行情、日线、4 小时 K 线 | `data-api.binance.vision` 的 `/api/v3/ticker/24hr`、`/api/v3/klines` | [现货行情接口文档](https://developers.binance.com/docs/binance-spot-api-docs/rest-api/market-data-endpoints)、[仅行情域名说明](https://developers.binance.com/docs/binance-spot-api-docs/faqs/market_data_only) |
 | F1–F7 | 币安 U 本位永续：标记价格与资金费率、资金费率历史、未平仓量及历史、多空账户比、主动买卖量、日线 | `fapi.binance.com` 的 `/fapi/v1/premiumIndex`、`/fapi/v1/fundingRate`、`/fapi/v1/openInterest`、`/futures/data/openInterestHist`、`/futures/data/globalLongShortAccountRatio`、`/futures/data/takerlongshortRatio`、`/fapi/v1/klines` | [U 本位合约行情接口文档](https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Open-Interest-Statistics) |
+| A1–A2 | 币安官方归档（仅 `--archive-fallback`）：永续未平仓量、多空账户比、日线 | `data.binance.vision/data/futures/um/daily/metrics/…`、`…/klines/BTCUSDT/1d/…` | [Binance Public Data](https://github.com/binance/binance-public-data)；文件格式对照了真实文件 |
 | B1 | 币安官方公告：新币上线、下架、最新动态、维护、API 更新 | `www.binance.com/bapi/composite/v1/public/cms/article/list/query` | [公告页](https://www.binance.com/en/support/announcement)自身使用的数据接口 |
 | E1 | 美国现货 BTC ETF 每日净流量 | `www.tftc.io/bitcoin-etf-flows/data.json` | [TFTC 公开数据与方法说明](https://www.tftc.io/bitcoin-etf-flows)，CC BY 4.0 |
 | G1 | 恐惧贪婪指数 | `api.alternative.me/fng/` | [Alternative.me API 说明](https://alternative.me/crypto/fear-and-greed-index/) |
@@ -52,7 +69,7 @@ python -m pytest -q
 
 写脚本时逐个实测过，下面几条会直接影响简报的完整度：
 
-1. **币安合约接口有地区限制。** 从受限地区（包括美国的云服务器）访问 `fapi.binance.com` 会返回 HTTP 451。此时资金费率、未平仓量、多空比、合约成交量、主动买卖量全部标「获取失败」，止跌信号第 3、4 项标「无法判定」。这部分代码只用符合官方文档字段的模拟数据测过，没有拿到过真实响应。现货数据走的 `data-api.binance.vision` 不受影响。
+1. **币安合约接口有地区限制。** 从受限地区（包括美国的云服务器）访问 `fapi.binance.com` 会返回 HTTP 451。此时资金费率、未平仓量、多空比、合约成交量、主动买卖量全部标「获取失败」，止跌信号第 3、4 项标「无法判定」；加 `--archive-fallback` 可以用 T-1 归档补回除资金费率以外的几项。实时合约这部分代码只用符合官方文档字段的模拟数据测过，没有拿到过真实响应；归档回退是用真实文件跑通的。现货数据走的 `data-api.binance.vision` 不受影响。
 2. **BLS 拒绝未留联系方式的自动访问。** 不设 `BTC_BRIEF_CONTACT` 时 CPI、非农日程会失败。iCalendar 解析器按标准格式写成并有离线测试，但没有拿到过 BLS 的真实文件。失败时简报会给出官方日程页链接，供人工核对。
 3. **ETF 数据是二手汇总，且会滞后。** TFTC 的上游是 SoSoValue 和 Farside 整理的发行方披露，不是发行方原始文件，通常比交易日晚一到数天更新。简报会写明数据截至哪一天、哪些工作日尚未收录。更常用的 Farside 页面对脚本返回 Cloudflare 人机验证，没有采用。
 4. **币安公告接口不在正式 API 文档里。** 它是公告页自己调用的接口，字段随时可能变。结构不符时脚本会报「获取失败」而不是猜测。币安文档里的正式公告推送需要 API Key，不符合本工具「不使用任何 Key」的约束。

@@ -21,13 +21,16 @@ BTC 行情监控简报（只读）
 from __future__ import annotations
 
 import argparse
+import csv
 import html
+import io
 import json
 import os
 import re
 import sys
 import time
 import xml.etree.ElementTree as ET
+import zipfile
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
@@ -62,6 +65,12 @@ SEC_PRESS_RSS = "https://www.sec.gov/news/pressreleases.rss"
 BLS_ICS_URL = "https://www.bls.gov/schedule/news_release/bls.ics"
 BLS_SCHEDULE_PAGE = "https://www.bls.gov/schedule/news_release/"
 
+# 币安官方公开历史数据归档（https://data.binance.vision）。仅在加 --archive-fallback 且实时合约接口
+# 失败时使用：按日发布，最新只到前一个 UTC 日，所以是 T-1 数据，简报里会逐行标明。
+ARCHIVE_BASE = "https://data.binance.vision/data/futures/um/daily"
+ARCHIVE_DAYS = 8             # 取最近 8 个已结束的 UTC 日
+ARCHIVE_MAX_AGE_HOURS = 48   # 归档最新一条早于 48 小时则视为不可用
+
 # 公告页分类（catalogId 取自公告页接口的实际返回）
 ANN_CATALOGS = {
     48: "新币上线",
@@ -95,11 +104,16 @@ TIMEOUT = 20
 ET_ZONE = "America/New_York"
 
 
-def user_agent() -> str:
-    """如实标识为脚本。BLS、SEC 要求自动访问附联系方式，可用环境变量 BTC_BRIEF_CONTACT 提供。"""
+# 只有这些主机会收到 BTC_BRIEF_CONTACT 里的联系方式（BLS 要求自动访问留联系方式）。
+# 其他站点一律只收到不含个人信息的通用 User-Agent。
+CONTACT_HOSTS = {"www.bls.gov"}
+
+
+def user_agent(host: str = "") -> str:
+    """如实标识为脚本；联系方式只发给 CONTACT_HOSTS 里的主机。"""
     contact = os.environ.get("BTC_BRIEF_CONTACT", "").strip()
     base = "btc-brief/1.0 (read-only research script"
-    return f"{base}; contact: {contact})" if contact else base + ")"
+    return f"{base}; contact: {contact})" if contact and host in CONTACT_HOSTS else base + ")"
 
 
 # --------------------------------------------------------------------------- #
@@ -185,44 +199,45 @@ class Fetcher:
         self.sources: dict[str, Source] = {}
         self._blocked_hosts: dict[str, str] = {}
 
-    def get(self, sid: str, name: str, url: str, params: dict | None = None, kind: str = "json"):
-        """GET 一个公开地址。成功返回解析后的数据，失败返回 None 并登记原因。"""
-        full = url + ("?" + urlencode(params) if params else "")
-        src = Source(sid=sid, name=name, url=full)
-        self.sources[sid] = src
+    def request(self, url: str, params: dict | None = None) -> tuple[bytes | None, str, datetime]:
+        """发一次 GET，返回 (内容, 错误说明, 请求时间)。不登记来源。"""
         host = urlsplit(url).netloc
         if host in self._blocked_hosts:
-            src.fetched_at = datetime.now(timezone.utc)
-            src.error = f"同一主机已被拒绝（{self._blocked_hosts[host]}），未重复请求"
-            return None
+            return (None, f"同一主机已被拒绝（{self._blocked_hosts[host]}），未重复请求",
+                    datetime.now(timezone.utc))
         last_err = ""
-        for attempt in range(2):  # 仅对网络层错误重试一次
+        for _ in range(2):  # 仅对网络层错误重试一次
             try:
-                resp = self.session.get(url, params=params, timeout=TIMEOUT)
-                src.fetched_at = datetime.now(timezone.utc)
+                resp = self.session.get(url, params=params, timeout=TIMEOUT,
+                                        headers={"User-Agent": user_agent(host)})
             except requests.RequestException as exc:
-                src.fetched_at = datetime.now(timezone.utc)
                 last_err = f"网络错误：{type(exc).__name__}"
                 time.sleep(1.0)
                 continue
             err = self._classify(resp)
-            if err:
-                src.error = err
-                if resp.status_code in (401, 403, 405, 451):
-                    self._blocked_hosts[host] = f"HTTP {resp.status_code}"
-                return None
-            try:
-                # 统一按 UTF-8 解码并去掉 BOM（美联储的 JSON、RSS 带 BOM）
-                data = resp.content.decode("utf-8-sig", errors="replace")
-                if kind == "json":
-                    data = json.loads(data)
-            except ValueError:
-                src.error = "返回内容不是合法 JSON"
-                return None
-            src.ok = True
-            return data
-        src.error = last_err or "未知错误"
-        return None
+            if err and resp.status_code in (401, 403, 405, 451):
+                self._blocked_hosts[host] = f"HTTP {resp.status_code}"
+            return (None if err else resp.content), err, datetime.now(timezone.utc)
+        return None, last_err or "未知错误", datetime.now(timezone.utc)
+
+    def get(self, sid: str, name: str, url: str, params: dict | None = None, kind: str = "json"):
+        """GET 一个公开地址并登记来源。成功返回解析后的数据，失败返回 None 并登记原因。"""
+        full = url + ("?" + urlencode(params) if params else "")
+        src = Source(sid=sid, name=name, url=full)
+        self.sources[sid] = src
+        content, src.error, src.fetched_at = self.request(url, params)
+        if content is None:
+            return None
+        try:
+            # 统一按 UTF-8 解码并去掉 BOM（美联储的 JSON、RSS 带 BOM）
+            data = content.decode("utf-8-sig", errors="replace")
+            if kind == "json":
+                data = json.loads(data)
+        except ValueError:
+            src.error = "返回内容不是合法 JSON"
+            return None
+        src.ok = True
+        return data
 
     @staticmethod
     def _classify(resp: requests.Response) -> str:
@@ -335,6 +350,86 @@ def fetch_futures(f: Fetcher, now_ms: int) -> dict:
               {"symbol": SYMBOL, "interval": "1d", "limit": 30})
     d["daily"] = parse_klines(k, now_ms) if k else None
     return d
+
+
+def _zip_csv_rows(content: bytes) -> list[list[str]]:
+    with zipfile.ZipFile(io.BytesIO(content)) as z:
+        text = z.read(z.namelist()[0]).decode("utf-8-sig")
+    return [r for r in csv.reader(io.StringIO(text)) if r]
+
+
+def fetch_futures_archive(f: Fetcher, now: datetime) -> dict:
+    """从币安官方归档取最近几个已结束 UTC 日的合约数据（T-1）。
+
+    metrics 文件列：create_time, symbol, sum_open_interest, sum_open_interest_value,
+    count_toptrader_long_short_ratio, sum_toptrader_long_short_ratio, count_long_short_ratio,
+    sum_taker_long_short_vol_ratio（5 分钟一行，时间为 UTC）。日线文件列与 K 线接口一致。
+    资金费率在归档里只有月度文件，当月的要到下月才发布，所以这里不取。
+    """
+    now_ms = int(now.timestamp() * 1000)
+    days = [now.date() - timedelta(days=k) for k in range(ARCHIVE_DAYS, 0, -1)]
+    out: dict = {"metrics": None, "daily": None}
+    specs = [
+        ("A1", "币安官方归档：永续未平仓量、多空账户比（T-1，5 分钟粒度）", "metrics",
+         f"{ARCHIVE_BASE}/metrics/{SYMBOL}/{SYMBOL}-metrics-{{d}}.zip"),
+        ("A2", "币安官方归档：永续日线 K 线（T-1）", "daily",
+         f"{ARCHIVE_BASE}/klines/{SYMBOL}/1d/{SYMBOL}-1d-{{d}}.zip"),
+    ]
+    for sid, name, key, pattern in specs:
+        src = Source(sid=sid, name=name, url=pattern.format(d="<日期>"))
+        f.sources[sid] = src
+        rows, got, missing, last_err = [], [], [], ""
+        for d in days:
+            content, err, src.fetched_at = f.request(pattern.format(d=d.isoformat()))
+            if content is None:
+                missing.append(d)
+                last_err = err
+                continue
+            try:
+                data = _zip_csv_rows(content)
+            except (zipfile.BadZipFile, UnicodeDecodeError, IndexError):
+                missing.append(d)
+                last_err = "文件不是合法的 zip/csv"
+                continue
+            if key == "metrics":
+                head = data[0]
+                try:
+                    i_t, i_oi, i_val, i_ls = (head.index(c) for c in (
+                        "create_time", "sum_open_interest", "sum_open_interest_value", "count_long_short_ratio"))
+                except ValueError:
+                    missing.append(d)
+                    last_err = "归档列名与预期不符"
+                    continue
+                for r in data[1:]:
+                    try:
+                        ts = datetime.strptime(r[i_t], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+                        rows.append({"timestamp": int(ts.timestamp() * 1000), "sumOpenInterest": float(r[i_oi]),
+                                     "sumOpenInterestValue": float(r[i_val]), "longShortRatio": float(r[i_ls])})
+                    except (ValueError, IndexError):
+                        continue
+            else:
+                rows.extend(parse_klines([r for r in data if r[0].isdigit()], now_ms))
+            got.append(d)
+        if key == "metrics":
+            rows.sort(key=lambda r: r["timestamp"])
+            newest = rows[-1]["timestamp"] if rows else None
+        else:
+            rows.sort(key=lambda c: c.open_time)
+            newest = rows[-1].close_time if rows else None
+        if not rows:
+            src.error = f"归档文件均未取到（{last_err or '无数据'}）"
+            continue
+        age_h = (now_ms - newest) / 3600_000
+        asof = datetime.fromtimestamp(newest / 1000, timezone.utc)
+        src.note = (f"T-1 归档，非实时。已取 {len(got)} 个日文件（{got[0]:%m-%d} 至 {got[-1]:%m-%d}），"
+                    f"数据截至 {asof:%Y-%m-%d %H:%M} UTC"
+                    + (f"；未取到：{'、'.join(f'{m:%m-%d}' for m in missing)}" if missing else ""))
+        if age_h > ARCHIVE_MAX_AGE_HOURS:
+            src.error = f"归档最新数据距今 {age_h:.0f} 小时，超过 {ARCHIVE_MAX_AGE_HOURS} 小时，不采用"
+            continue
+        src.ok = True
+        out[key] = rows
+    return out
 
 
 def fetch_announcements(f: Fetcher) -> list[dict] | None:
@@ -563,6 +658,7 @@ class Signal:
     rule: str
     facts: list[str] = field(default_factory=list)
     tags: str = ""
+    qualifier: str = ""   # 例如"按 T-1 归档数据"
 
     @property
     def available(self) -> bool:
@@ -773,17 +869,29 @@ def build_report(clock: Clock, f: Fetcher, spot: dict, fut: dict, fng, etf, anns
     et = zone(ET_ZONE)
     today_et = clock.now.astimezone(et).date() if et else clock.now.date()
 
+    arch = fut.get("archive") or {}
+    arch_metrics, arch_daily = arch.get("metrics"), arch.get("daily")
+    oi_from_archive = not fut.get("oi_hist") and bool(arch_metrics)
+    if oi_from_archive:
+        asof_ms = arch_metrics[-1]["timestamp"]
+        oi_signal = sig_oi(None, arch_metrics, asof_ms)
+        oi_signal.qualifier = "按 T-1 归档数据"
+        oi_signal.facts.append(
+            f"以上取自币安官方归档，时间基准为 {clock.fmt_ms(asof_ms)}，"
+            f"其后约 {(now_ms - asof_ms) / 3600_000:.0f} 小时的变化未包含")
+    else:
+        oi_signal = sig_oi(fut.get("oi"), fut.get("oi_hist"), now_ms)
     signals = [
         sig_hammer(daily),
         sig_no_new_low(daily),
         sig_funding(fut.get("premium"), fut.get("funding")),
-        sig_oi(fut.get("oi"), fut.get("oi_hist"), now_ms),
+        oi_signal,
         sig_etf(etf, today_et),
     ]
     signals[0].tags = f.tag("S2")
     signals[1].tags = f.tag("S2")
     signals[2].tags = f.tag("F1", "F2")
-    signals[3].tags = f.tag("F3", "F4")
+    signals[3].tags = f.tag("A1") if oi_from_archive else f.tag("F3", "F4")
     signals[4].tags = f.tag("E1")
     stage = infer_stage(daily, price, signals)
 
@@ -805,6 +913,9 @@ def build_report(clock: Clock, f: Fetcher, spot: dict, fut: dict, fng, etf, anns
         add(f"- {b}")
     for c in stage.caveats:
         add(f"- 说明：{c}")
+    if arch_metrics or arch_daily:
+        add("- 说明：实时合约接口不可用，未平仓量、多空账户比、合约成交量改用币安官方归档的 T-1 数据，"
+            "相关行均标「归档 T-1」并写明截至时间；资金费率和标记价格归档里没有，仍为获取失败。")
     failed = [s for s in f.sources.values() if not s.ok]
     if failed:
         add(f"- 本次有 {len(failed)} 个数据源获取失败：{'、'.join(s.sid for s in failed)}（详见文末），相关条目均标为「{FAIL}」。")
@@ -891,6 +1002,14 @@ def build_report(clock: Clock, f: Fetcher, spot: dict, fut: dict, fng, etf, anns
         val = float(wk[-1]["sumOpenInterestValue"])
         add(f"| 未平仓量（永续） | {usd(cur, 0)} BTC（名义约 {val / 1e9:,.2f} 十亿美元） | {usd(avg, 0)} BTC | "
             f"{pct(rel(cur, avg))} | {f.tag('F3', 'F4')} |")
+    elif arch_metrics:
+        asof_ms = arch_metrics[-1]["timestamp"]
+        wk = series_since(arch_metrics, asof_ms, 7)
+        avg = safe_mean(r["sumOpenInterest"] for r in wk)
+        cur, val = wk[-1]["sumOpenInterest"], wk[-1]["sumOpenInterestValue"]
+        add(f"| 未平仓量（永续，**归档 T-1**，截至 {clock.fmt_ms(asof_ms)}） | {usd(cur, 0)} BTC"
+            f"（名义约 {val / 1e9:,.2f} 十亿美元） | {usd(avg, 0)} BTC（截至时间前 7 日） | "
+            f"{pct(rel(cur, avg))} | {f.tag('A1')} |")
     else:
         add(f"| 未平仓量（永续） | {f.reason('F4')} | — | — | {f.tag('F3', 'F4')} |")
 
@@ -902,6 +1021,14 @@ def build_report(clock: Clock, f: Fetcher, spot: dict, fut: dict, fng, etf, anns
         cur = float(cur_row["longShortRatio"])
         add(f"| 多空账户比（全市场账户数） | {cur:.3f}（多 {float(cur_row['longAccount']):.1%} / 空 {float(cur_row['shortAccount']):.1%}） | "
             f"{'—' if avg is None else f'{avg:.3f}'} | {pct(rel(cur, avg))} | {f.tag('F5')} |")
+    elif arch_metrics:
+        asof_ms = arch_metrics[-1]["timestamp"]
+        wk = series_since(arch_metrics, asof_ms, 7)
+        avg = safe_mean(r["longShortRatio"] for r in wk)
+        cur = wk[-1]["longShortRatio"]
+        add(f"| 多空账户比（全市场账户数，**归档 T-1**，截至 {clock.fmt_ms(asof_ms)}） | {cur:.3f}"
+            f"（折算多 {cur / (1 + cur):.1%} / 空 {1 / (1 + cur):.1%}） | "
+            f"{'—' if avg is None else f'{avg:.3f}'}（截至时间前 7 日） | {pct(rel(cur, avg))} | {f.tag('A1')} |")
     else:
         add(f"| 多空账户比 | {f.reason('F5')} | — | — | {f.tag('F5')} |")
 
@@ -913,12 +1040,15 @@ def build_report(clock: Clock, f: Fetcher, spot: dict, fut: dict, fng, etf, anns
             f"{pct(rel(v24, avg))} | {f.tag('S1', 'S2')} |")
     else:
         add(f"| 现货成交量 | {f.reason('S2')} | — | — | {f.tag('S1', 'S2')} |")
-    fdone = completed(fut.get("daily"))
+    fdone, vol_tag, vol_label = completed(fut.get("daily")), f.tag("F7"), ""
+    adone = completed(arch_daily)
+    if len(fdone) < 8 and len(adone) >= 8:
+        fdone, vol_tag, vol_label = adone, f.tag("A2"), "，**归档 T-1**"
     if len(fdone) >= 8:
         last_d = fdone[-1]
         avg = mean(c.volume for c in fdone[-8:-1])
-        add(f"| 永续成交量（最近一根已收盘日线 {ms_to_date(last_d.open_time)}） | {usd(last_d.volume, 0)} BTC | "
-            f"{usd(avg, 0)} BTC（此前 7 日） | {pct(rel(last_d.volume, avg))} | {f.tag('F7')} |")
+        add(f"| 永续成交量（最近一根已收盘日线 {ms_to_date(last_d.open_time)}{vol_label}） | {usd(last_d.volume, 0)} BTC | "
+            f"{usd(avg, 0)} BTC（此前 7 日） | {pct(rel(last_d.volume, avg))} | {vol_tag} |")
     else:
         add(f"| 永续成交量 | {f.reason('F7')} | — | — | {f.tag('F7')} |")
 
@@ -931,6 +1061,15 @@ def build_report(clock: Clock, f: Fetcher, spot: dict, fut: dict, fng, etf, anns
         add(f"| 永续主动买卖量比（近 24 小时，买/卖） | {'—' if cur is None else f'{cur:.3f}'}"
             f"（买 {usd(buy, 0)} / 卖 {usd(sell, 0)} BTC） | {'—' if avg is None else f'{avg:.3f}'}（7 日合计口径） | "
             f"{pct(rel(cur, avg))} | {f.tag('F6')} |")
+    elif len(adone) >= 8:
+        last_d, prev = adone[-1], adone[-8:-1]
+        buy, sell = last_d.taker_buy_base, last_d.volume - last_d.taker_buy_base
+        wbuy = sum(c.taker_buy_base for c in prev)
+        wsell = sum(c.volume - c.taker_buy_base for c in prev)
+        cur, avg = (buy / sell if sell else None), (wbuy / wsell if wsell else None)
+        add(f"| 永续主动买卖量比（{ms_to_date(last_d.open_time)} 全日，买/卖，**归档 T-1**） | "
+            f"{'—' if cur is None else f'{cur:.3f}'}（买 {usd(buy, 0)} / 卖 {usd(sell, 0)} BTC） | "
+            f"{'—' if avg is None else f'{avg:.3f}'}（此前 7 日合计口径） | {pct(rel(cur, avg))} | {f.tag('A2')} |")
     else:
         add(f"| 永续主动买卖量比 | {f.reason('F6')} | — | — | {f.tag('F6')} |")
     if daily and len(done) >= 7:
@@ -977,10 +1116,12 @@ def build_report(clock: Clock, f: Fetcher, spot: dict, fut: dict, fng, etf, anns
     add("|---|---|---|---|")
     for i, s in enumerate(signals, 1):
         mark = {"出现": "✅ 出现", "未出现": "❌ 未出现"}.get(s.status, f"⚠️ 无法判定（{FAIL}）")
+        if s.qualifier and s.available:
+            mark += f"（{s.qualifier}）"
         add(f"| {i} | {s.name} | {mark} | {s.tags} |")
     add("")
     for i, s in enumerate(signals, 1):
-        add(f"**{i}. {s.name}：{s.status}**")
+        add(f"**{i}. {s.name}：{s.status}{f'（{s.qualifier}）' if s.qualifier and s.available else ''}**")
         add(f"- 【推断】判定规则：{s.rule}")
         for fact in s.facts:
             add(f"- 【事实】{fact}")
@@ -1092,11 +1233,13 @@ def build_report(clock: Clock, f: Fetcher, spot: dict, fut: dict, fng, etf, anns
 
 
 # --------------------------------------------------------------------------- #
-def run(tz_name: str = "Asia/Shanghai") -> str:
+def run(tz_name: str = "Asia/Shanghai", archive_fallback: bool = False) -> str:
     clock = Clock(tz_name)
     f = Fetcher()
     spot = fetch_spot(f, clock.now_ms)
     fut = fetch_futures(f, clock.now_ms)
+    if archive_fallback and not (fut.get("oi_hist") and fut.get("ls") and fut.get("daily")):
+        fut["archive"] = fetch_futures_archive(f, clock.now)
     anns = fetch_announcements(f)
     etf = fetch_etf(f)
     fng = fetch_fng(f)
@@ -1112,9 +1255,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--tz", default="Asia/Shanghai", help="简报中附带显示的本地时区，默认 Asia/Shanghai")
     ap.add_argument("--out-dir", default="reports", help="简报保存目录，默认 reports/")
     ap.add_argument("--no-save", action="store_true", help="只打印到终端，不写文件")
+    ap.add_argument("--archive-fallback", action="store_true",
+                    help="实时合约接口失败时（如 HTTP 451），改用币安官方归档的 T-1 数据补未平仓量、多空比、"
+                         "合约成交量，并在简报中逐行标明；默认关闭")
     args = ap.parse_args(argv)
 
-    report = run(args.tz)
+    report = run(args.tz, args.archive_fallback)
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
     print(report)

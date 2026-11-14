@@ -3,8 +3,10 @@
 
 运行： python -m pytest -q
 """
+import io
 import json
 import sys
+import zipfile
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -206,13 +208,41 @@ def kl(c: bb.Candle):
 class FakeSession:
     """按路径返回与官方文档字段一致的模拟数据；fapi_status 用来模拟 451。"""
 
-    def __init__(self, fapi_status=200):
-        self.headers, self.fapi_status, self.calls = {}, fapi_status, []
+    def __init__(self, fapi_status=200, archive_days=()):
+        self.headers, self.fapi_status, self.calls, self.sent_headers = {}, fapi_status, [], []
+        self.archive_days = set(archive_days)
 
-    def get(self, url, params=None, timeout=None):
+    def archive(self, url):
+        """模拟 data.binance.vision：有的日期返回 zip，没有的返回 404。"""
+        day = url.rsplit("-", 3)[-3:]
+        day = "-".join(day).replace(".zip", "")
+        if day not in self.archive_days:
+            return FakeResp(404, b"<Error><Code>NoSuchKey</Code></Error>")
+        d0 = int(datetime.fromisoformat(day).replace(tzinfo=timezone.utc).timestamp() * 1000)
+        if "/metrics/" in url:
+            oi = 86000 if day == max(self.archive_days) else 100000
+            lines = ["create_time,symbol,sum_open_interest,sum_open_interest_value,"
+                     "count_toptrader_long_short_ratio,sum_toptrader_long_short_ratio,"
+                     "count_long_short_ratio,sum_taker_long_short_vol_ratio"]
+            for k in range(288):
+                ts = datetime.fromtimestamp((d0 + k * 300_000) / 1000, timezone.utc)
+                lines.append(f"{ts:%Y-%m-%d %H:%M:%S},BTCUSDT,{oi},{oi * 93},2.5,2.1,3.0,0.9")
+            name, body = f"BTCUSDT-metrics-{day}.csv", "\n".join(lines)
+        else:
+            head = "open_time,open,high,low,close,volume,close_time,quote_volume,count,taker_buy_volume,taker_buy_quote_volume,ignore"
+            name, body = f"BTCUSDT-1d-{day}.csv", f"{head}\n{d0},100,102,98,99,1000,{d0 + DAY - 1},99000,5000,450,44550,0"
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as z:
+            z.writestr(name, body)
+        return FakeResp(200, buf.getvalue())
+
+    def get(self, url, params=None, timeout=None, headers=None):
         self.calls.append(url)
+        self.sent_headers.append((url, headers or {}))
         daily = decline(1, 93)
         hours = [NOW_MS - i * 3600_000 for i in range(199, -1, -1)]
+        if "data.binance.vision" in url:
+            return self.archive(url)
         if "fapi.binance.com" in url and self.fapi_status != 200:
             return FakeResp(self.fapi_status, b'{"code":0,"msg":"restricted location"}')
         routes = {
@@ -242,11 +272,13 @@ class FakeSession:
         return FakeResp(403, b"<html><title>Access Denied</title></html>")
 
 
-def render(fapi_status=200):
+def render(fapi_status=200, archive_days=None):
     clock = bb.Clock(now=NOW)
-    f = bb.Fetcher(session=FakeSession(fapi_status))
+    f = bb.Fetcher(session=FakeSession(fapi_status, archive_days or ()))
     spot = bb.fetch_spot(f, clock.now_ms)
     fut = bb.fetch_futures(f, clock.now_ms)
+    if archive_days is not None:
+        fut["archive"] = bb.fetch_futures_archive(f, clock.now)
     report = bb.build_report(clock, f, spot, fut, bb.fetch_fng(f), bb.fetch_etf(f), bb.fetch_announcements(f),
                              None, None, bb.fetch_fed_calendar(f), bb.fetch_bls(f))
     return report, f
@@ -278,3 +310,44 @@ def test_only_get_requests_and_no_credentials():
     src = Path(bb.__file__).read_text(encoding="utf-8")
     for banned in (".post(", ".put(", ".delete(", "X-MBX-APIKEY", "signature=", "/order", "/transfer"):
         assert banned not in src
+
+
+def test_contact_is_sent_only_to_bls(monkeypatch):
+    monkeypatch.setenv("BTC_BRIEF_CONTACT", "contact-placeholder")
+    _, f = render()
+    for url, headers in f.session.sent_headers:
+        has_contact = "contact-placeholder" in headers.get("User-Agent", "")
+        assert has_contact == ("www.bls.gov" in url), url
+
+
+# ---- 归档回退 -------------------------------------------------------------
+def last_days(n, skip=0):
+    return [(NOW.date() - timedelta(days=k)).isoformat() for k in range(1 + skip, n + 1 + skip)]
+
+
+def test_archive_fallback_fills_oi_but_not_funding():
+    report, f = render(fapi_status=451, archive_days=last_days(8))
+    assert f.sources["A1"].ok and f.sources["A2"].ok
+    assert "T-1 归档，非实时" in f.sources["A1"].note
+    # 未平仓量：T-1 当日 86000，此前 100000 → 较峰值 -14%，信号出现且带归档限定语
+    assert "| 4 | 未平仓量大幅下降（杠杆出清） | ✅ 出现（按 T-1 归档数据） |" in report
+    assert "未平仓量（永续，**归档 T-1**，截至 2026-11-13 23:55 UTC" in report
+    assert "3.000（折算多 75.0% / 空 25.0%）" in report
+    assert "0.818（买 450 / 卖 550 BTC）" in report
+    # 资金费率归档补不了，必须仍是失败
+    assert "| 3 | 资金费率转负 | ⚠️ 无法判定（获取失败） |" in report
+    assert not f.sources["F2"].ok
+
+
+def test_archive_too_old_is_rejected():
+    # 最新只到 3 天前：超过 48 小时，不采用
+    report, f = render(fapi_status=451, archive_days=last_days(6, skip=2))
+    assert not f.sources["A1"].ok and "不采用" in f.sources["A1"].error
+    assert "| 4 | 未平仓量大幅下降（杠杆出清） | ⚠️ 无法判定（获取失败） |" in report
+    assert "归档 T-1" not in report.split("## 2.")[1].split("## 3.")[0]
+
+
+def test_archive_missing_latest_day_is_disclosed():
+    _, f2 = render(fapi_status=451, archive_days=last_days(7, skip=1))   # T-1 文件尚未发布
+    assert f2.sources["A1"].ok and "未取到：11-13" in f2.sources["A1"].note
+    assert "数据截至 2026-11-12 23:55 UTC" in f2.sources["A1"].note
