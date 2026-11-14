@@ -48,6 +48,23 @@ python -m pytest -q
 
 运行示例见 [`examples/sample_output.md`](examples/sample_output.md)，是 2026-11-14 在云环境里用 `--archive-fallback` 的一次真实运行输出。
 
+## 模拟单记录
+
+`paper_trade.py` 用来记一笔"假如现在开仓"的模拟单，过后按真实行情结算。它只读行情，不下单。
+
+```bash
+# 记录：按当前现货价作为入场价，写入 paper_trades/
+python paper_trade.py open --side short --leverage 10 --margin 10 --hours 72 BTCUSDT ETHUSDT
+# 结算：未到期时显示当前估值，到期后按到期时刻的价格结算
+python paper_trade.py check paper_trades/<记录文件>.json
+```
+
+结算用入场后的 1 分钟 K 线，逐根检查是否触及强平线，一旦触及就按亏完保证金计。几个近似需要知道：
+
+- 用现货价格代替永续合约价格，两者通常只差一点，但强平实际看的是合约标记价格。
+- 强平线按 `(1 + 1/杠杆) / (1 + 维持保证金率) - 1` 估算，10 倍时约为不利方向 9.45%。真实强平价以下单面板为准。
+- 手续费按单边 0.05% 假设，资金费率没有计入。两者都写在记录文件的 `assumptions` 里，可以在 `open` 时用参数改。
+
 ## 数据源
 
 接口地址和参数都先核对了官方文档或官方页面的真实返回，再写进代码。

@@ -1,0 +1,30 @@
+{
+  "type": "模拟单（未实际下单）",
+  "side": "short",
+  "leverage": 10.0,
+  "margin_usd_per_leg": 10.0,
+  "notional_usd_per_leg": 100.0,
+  "opened_at": "2026-11-14T16:01:49+00:00",
+  "planned_close_at": "2026-11-17T16:01:49+00:00",
+  "hold_hours": 72.0,
+  "assumptions": {
+    "price_proxy": "用币安现货价格近似 U 本位永续价格（本环境访问不了合约接口）",
+    "taker_fee_rate_per_side": 0.0005,
+    "maintenance_margin_rate": 0.005,
+    "liquidation_adverse_move": 0.09453,
+    "funding": "未计入。72 小时内有 9 次资金费率结算，方向和大小取决于当时费率",
+    "note": "手续费率、维持保证金率是假设值，以账户实际费率和下单面板显示的强平价为准"
+  },
+  "legs": [
+    {
+      "symbol": "BTCUSDT",
+      "entry_price": 65712.29,
+      "entry_price_source": "https://data-api.binance.vision/api/v3/ticker/price?symbol=BTCUSDT（现货最新成交价）"
+    },
+    {
+      "symbol": "ETHUSDT",
+      "entry_price": 1840.13,
+      "entry_price_source": "https://data-api.binance.vision/api/v3/ticker/price?symbol=ETHUSDT（现货最新成交价）"
+    }
+  ]
+}

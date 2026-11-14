@@ -351,3 +351,32 @@ def test_archive_missing_latest_day_is_disclosed():
     _, f2 = render(fapi_status=451, archive_days=last_days(7, skip=1))   # T-1 文件尚未发布
     assert f2.sources["A1"].ok and "未取到：11-13" in f2.sources["A1"].note
     assert "数据截至 2026-11-12 23:55 UTC" in f2.sources["A1"].note
+
+
+# ---- 模拟单结算 -----------------------------------------------------------
+import paper_trade as pt  # noqa: E402
+
+
+def test_paper_trade_short_profit_and_loss():
+    liq = pt.liquidation_move(10, 0.005)
+    assert 0.094 < liq < 0.095
+    # 价格跌 5%：10 美元保证金、名义 100 美元 → +5，扣 0.10 手续费
+    r = pt.settle("short", 100, 10, 10, 0.0005, liq, [(101, 97, 98), (99, 94, 95)])
+    assert abs(r["pnl"] - 4.90) < 1e-9 and r["liquidated_index"] is None
+    assert abs(r["worst_adverse_move"] - 0.01) < 1e-9
+    # 价格涨 5%：-5 再扣手续费
+    r = pt.settle("short", 100, 10, 10, 0.0005, liq, [(106, 100, 105)])
+    assert abs(r["pnl"] + 5.10) < 1e-9
+
+
+def test_paper_trade_liquidation_overrides_final_price():
+    liq = pt.liquidation_move(10, 0.005)
+    # 途中先涨 10% 触及强平线，之后即使跌回去也按亏完保证金计
+    r = pt.settle("short", 100, 10, 10, 0.0005, liq, [(110, 100, 109), (109, 80, 80)])
+    assert r["liquidated_index"] == 0 and r["pnl"] == -10
+
+
+def test_paper_trade_has_no_order_code():
+    src = Path(pt.__file__).read_text(encoding="utf-8")
+    for banned in (".post(", ".put(", ".delete(", "X-MBX-APIKEY", "signature=", "/fapi/v1/order", "/api/v3/order"):
+        assert banned not in src
